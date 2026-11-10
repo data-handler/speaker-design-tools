@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Speaker Design Tools</title>
+  <meta name="description" content="Free, browser-based loudspeaker design tools for DIY builders: baffle diffraction, box alignment and more.">
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#1095c1">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="vendor/pico/pico.min.css">
+  <style>
+    :root { --pico-font-size: 100%; }
+    .tool-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: 1rem; }
+    .tool-card { height: 100%; }
+    .tool-card.disabled { opacity: 0.6; }
+    footer small { color: var(--pico-muted-color); }
+  </style>
+</head>
+<body>
+  <main class="container">
+    <header style="padding-top: 2rem;">
+      <h1>Speaker Design Tools</h1>
+      <p>Free, browser-based loudspeaker design tools for DIY builders. Everything runs locally in your browser &mdash; no accounts, no uploads, nothing leaves your device.</p>
+    </header>
+
+    <section class="tool-grid">
+      <article class="tool-card">
+        <h2>Baffle Diffraction</h2>
+        <p>Model baffle-step and edge-diffraction loss for a driver and cabinet layout, using the Vanderkooy edge-diffraction method.</p>
+        <a href="tools/diffraction/" role="button">Open tool</a>
+      </article>
+
+      <article class="tool-card disabled">
+        <h2>Box Modeller</h2>
+        <p>Sealed, vented and passive-radiator box alignment from Thiele&ndash;Small parameters.</p>
+        <a role="button" class="secondary" aria-disabled="true">Coming soon</a>
+      </article>
+    </section>
+
+    <footer style="padding: 2rem 0;">
+      <small>
+        Inspired by the work of the late Jeff Bagby, whose free design tools helped a generation of DIY speaker builders.
+        Not affiliated with or endorsed by Jeff Bagby's estate. Built from scratch from published maths and physics &mdash;
+        source on <a href="https://github.com/data-handler/speaker-design-tools">GitHub</a>.
+      </small>
+    </footer>
+  </main>
+
+  <script type="module" src="src/register-sw.js"></script>
+</body>
+</html>
