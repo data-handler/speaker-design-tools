@@ -56,3 +56,17 @@ Start small and get one tool genuinely good before moving on.
   and a `kind` discriminator (e.g. `"diffraction"`, `"sealed-box"`). Add a migration function
   per tool whenever the schema changes; never delete an old migration step.
 - **License:** MIT, matching the main site.
+
+## Progress
+
+- **Baffle diffraction (item 1):** working. Vanderkooy edge-source model,
+  validated with a `node:test` suite against known closed-form results, live
+  chart, JSON project export/import.
+- **Box modeller (item 2):** sealed box is complete (response + cone
+  excursion, both validated). Vented box response is complete and validated
+  (including a cross-check against the standard 4th-order Butterworth filter
+  coefficients, independent of Small's own paper). Still to do: vented-box
+  cone excursion (needs its own transfer function, not yet derived/verified
+  with enough confidence to ship), and passive-radiator alignment (not
+  started).
+- **Passive crossover simulation (item 3):** not started, per the stated plan.

@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Box Modeller &mdash; Speaker Design Tools</title>
+  <link rel="manifest" href="../../manifest.json">
+  <meta name="theme-color" content="#1095c1">
+  <link rel="icon" href="../../icons/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="../../vendor/pico/pico.min.css">
+  <link rel="stylesheet" href="../../vendor/uplot/uPlot.min.css">
+</head>
+<body>
+  <main class="container">
+    <header style="padding-top: 2rem;">
+      <nav aria-label="breadcrumb">
+        <ul>
+          <li><a href="../../">Speaker Design Tools</a></li>
+          <li>Box Modeller</li>
+        </ul>
+      </nav>
+      <h1>Box Modeller</h1>
+      <p>Sealed and vented box alignment from Thiele-Small parameters
+        (R. Small, &ldquo;Direct Radiator Loudspeaker System Analysis&rdquo; and
+        &ldquo;Vented-Box Loudspeaker Systems&rdquo;, JAES 1972&ndash;73).
+        Passive-radiator alignment and vented-box cone excursion aren't modelled yet.</p>
+    </header>
+
+    <section id="app">
+      <!-- RE:DOM-mounted tool UI goes here -->
+    </section>
+
+    <footer style="padding: 2rem 0;">
+      <small>Inspired by the work of the late Jeff Bagby. Not affiliated with or endorsed by his estate.</small>
+    </footer>
+  </main>
+
+  <script type="module" src="./main.js"></script>
+  <script type="module" src="../../src/register-sw.js"></script>
+</body>
+</html>
