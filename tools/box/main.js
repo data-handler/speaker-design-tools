@@ -3,6 +3,7 @@ import uPlot from '../../vendor/uplot/uPlot.esm.js';
 import { logSpace } from '../../src/diffraction.js';
 import { sealedBoxAlignment, sealedBoxResponseDb, sealedBoxExcursionMm } from '../../src/sealed-box.js';
 import { ventedBoxAlignment, ventedBoxResponseDb } from '../../src/vented-box.js';
+import { chartTheme } from '../../src/chart-theme.js';
 
 const SCHEMA_VERSION = 1;
 const KIND = 'box';
@@ -10,7 +11,7 @@ const KIND = 'box';
 const DEFAULT_PROJECT = {
   schemaVersion: SCHEMA_VERSION,
   kind: KIND,
-  name: 'Untitled box',
+  name: 'Example: 6.5" woofer, sealed',
   boxType: 'sealed',
   fsHz: 30,
   qts: 0.35,
@@ -24,25 +25,31 @@ const DEFAULT_PROJECT = {
 };
 
 const DRIVER_FIELDS = [
-  { key: 'fsHz', label: 'Fs - free-air resonance (Hz)', min: 1 },
-  { key: 'qts', label: 'Qts - total Q', min: 0.05 },
-  { key: 'vasL', label: 'Vas - compliance volume (L)', min: 0.1 },
+  { key: 'fsHz', label: 'Fs - free-air resonance (Hz)', min: 1, hint: 'From the driver’s datasheet' },
+  { key: 'qts', label: 'Qts - total Q', min: 0.05, hint: 'From the datasheet; typically 0.2–0.6' },
+  { key: 'vasL', label: 'Vas - compliance volume (L)', min: 0.1, hint: 'From the datasheet' },
 ];
 
 const BOX_FIELDS = {
-  sealed: [{ key: 'vbL', label: 'Vb - net box volume (L)', min: 0.1 }],
+  sealed: [{ key: 'vbL', label: 'Vb - net box volume (L)', min: 0.1, hint: 'After driver, bracing and port displacement' }],
   vented: [
-    { key: 'vbL', label: 'Vb - net box volume (L)', min: 0.1 },
-    { key: 'fbHz', label: 'Fb - port tuning frequency (Hz)', min: 1 },
+    { key: 'vbL', label: 'Vb - net box volume (L)', min: 0.1, hint: 'After driver, bracing and port displacement' },
+    { key: 'fbHz', label: 'Fb - port tuning frequency (Hz)', min: 1, hint: 'The Helmholtz resonance of box + port' },
   ],
 };
 
 const EXCURSION_FIELDS = [
-  { key: 'blTm', label: 'Bl - force factor (T·m)', min: 0.1 },
-  { key: 'reOhm', label: 'Re - DC resistance (Ω)', min: 0.1 },
-  { key: 'mmsGrams', label: 'Mms - moving mass (g)', min: 0.1 },
-  { key: 'voltageV', label: 'Drive voltage (Vrms)', min: 0.01 },
+  { key: 'blTm', label: 'Bl - force factor (T·m)', min: 0.1, hint: 'From the datasheet' },
+  { key: 'reOhm', label: 'Re - DC resistance (Ω)', min: 0.1, hint: 'From the datasheet' },
+  { key: 'mmsGrams', label: 'Mms - moving mass (g)', min: 0.1, hint: 'Cone + voice coil + air load' },
+  { key: 'voltageV', label: 'Drive voltage (Vrms)', min: 0.01, hint: 'e.g. 2.83V ≈ 1W into 8Ω' },
 ];
+
+function fieldGroups(project) {
+  const groups = [{ legend: 'Driver (Thiele-Small)', fields: DRIVER_FIELDS }, { legend: 'Enclosure', fields: BOX_FIELDS[project.boxType] }];
+  if (project.boxType === 'sealed') groups.push({ legend: 'Drive signal (for excursion)', fields: EXCURSION_FIELDS });
+  return groups;
+}
 
 function loadProject() {
   try {
@@ -71,10 +78,11 @@ function downloadJson(project) {
   URL.revokeObjectURL(url);
 }
 
-function activeFields(project) {
-  return project.boxType === 'vented'
-    ? [...DRIVER_FIELDS, ...BOX_FIELDS.vented]
-    : [...DRIVER_FIELDS, ...BOX_FIELDS.sealed, ...EXCURSION_FIELDS];
+function readoutItem(label, value, unit) {
+  return el('div.readout-item', [
+    el('span.readout-label', label),
+    el('span.readout-value', [value, unit ? el('small', ` ${unit}`) : null]),
+  ]);
 }
 
 function App() {
@@ -88,43 +96,52 @@ function App() {
   ]);
   boxTypeSelect.value = project.boxType;
 
-  const fieldsContainer = el('div', { class: 'grid' });
-  const errorBox = el('p', { style: { color: 'var(--pico-del-color)', display: 'none' } });
-  const summaryBox = el('p');
+  const fieldsetsContainer = el('div');
+  const errorBox = el('p.error-text', { style: { display: 'none' } });
+  const readout = el('div.readout');
 
   const responseChartContainer = el('div');
   const excursionChartContainer = el('div');
-  const excursionArticle = el('article', [el('h4', 'Cone excursion (peak, for the given drive voltage)'), excursionChartContainer]);
+  const excursionPanel = el('div.chart-panel', [
+    el('h2', 'Cone excursion (peak, for the given drive voltage)'),
+    excursionChartContainer,
+  ]);
   let responseChart;
   let excursionChart;
 
   function rebuildFields() {
-    fieldsContainer.textContent = '';
+    fieldsetsContainer.textContent = '';
     for (const key of Object.keys(inputs)) delete inputs[key];
-    for (const { key, label, min } of activeFields(project)) {
-      const input = el('input', {
-        type: 'number',
-        min,
-        step: 'any',
-        value: project[key],
-        id: `field-${key}`,
-      });
-      input.addEventListener('input', recompute);
-      inputs[key] = input;
-      fieldsContainer.appendChild(el('label', [label, input]));
+    for (const { legend, fields } of fieldGroups(project)) {
+      fieldsetsContainer.appendChild(
+        el('fieldset', [
+          el('legend', legend),
+          el(
+            'div.field-grid',
+            fields.map(({ key, label, min, hint }) => {
+              const input = el('input', { type: 'number', min, step: 'any', value: project[key], id: `field-${key}` });
+              input.addEventListener('input', recompute);
+              inputs[key] = input;
+              return el('label', [label, input, el('small.hint', hint)]);
+            })
+          ),
+        ])
+      );
     }
-    excursionArticle.style.display = project.boxType === 'sealed' ? '' : 'none';
+    excursionPanel.style.display = project.boxType === 'sealed' ? '' : 'none';
   }
 
   function recompute() {
-    for (const { key, min } of activeFields(project)) {
-      const value = Number(inputs[key].value);
-      if (!Number.isFinite(value) || value < (min ?? -Infinity)) {
-        errorBox.textContent = `${inputs[key].id} must be a number ≥ ${min}`;
-        errorBox.style.display = '';
-        return;
+    for (const { fields } of fieldGroups(project)) {
+      for (const { key, min } of fields) {
+        const value = Number(inputs[key].value);
+        if (!Number.isFinite(value) || value < (min ?? -Infinity)) {
+          errorBox.textContent = `${inputs[key].id} must be a number ≥ ${min}`;
+          errorBox.style.display = '';
+          return;
+        }
+        project[key] = value;
       }
-      project[key] = value;
     }
     project.name = nameInput.value;
     project.boxType = boxTypeSelect.value;
@@ -134,15 +151,18 @@ function App() {
     try {
       const freqs = logSpace(10, 2000, 500);
       const sealedParams = { fsHz: project.fsHz, qts: project.qts, vasL: project.vasL, vbL: project.vbL };
+      readout.textContent = '';
 
       if (project.boxType === 'vented') {
         const { h, alpha } = ventedBoxAlignment({ ...sealedParams, fbHz: project.fbHz });
-        summaryBox.textContent = `h (Fb/Fs) = ${h.toFixed(3)}, α (Vas/Vb) = ${alpha.toFixed(3)}`;
+        readout.appendChild(readoutItem('h (Fb/Fs)', h.toFixed(3)));
+        readout.appendChild(readoutItem('α (Vas/Vb)', alpha.toFixed(3)));
         const gains = ventedBoxResponseDb(freqs, { ...sealedParams, fbHz: project.fbHz });
         responseChart.setData([Array.from(freqs), Array.from(gains)]);
       } else {
         const { fcHz, qtc } = sealedBoxAlignment(sealedParams);
-        summaryBox.textContent = `Fc = ${fcHz.toFixed(1)} Hz, Qtc = ${qtc.toFixed(3)}`;
+        readout.appendChild(readoutItem('Fc', fcHz.toFixed(1), 'Hz'));
+        readout.appendChild(readoutItem('Qtc', qtc.toFixed(3)));
         const gains = sealedBoxResponseDb(freqs, sealedParams);
         responseChart.setData([Array.from(freqs), Array.from(gains)]);
 
@@ -183,41 +203,48 @@ function App() {
       nameInput.value = project.name;
       boxTypeSelect.value = project.boxType;
       rebuildFields();
-      for (const { key } of activeFields(project)) inputs[key].value = project[key];
+      for (const { fields } of fieldGroups(project)) for (const { key } of fields) inputs[key].value = project[key];
       recompute();
     } catch (err) {
       errorBox.textContent = `Could not load project: ${err.message}`;
       errorBox.style.display = '';
     }
   });
-  const importButton = el('button', { type: 'button', class: 'secondary' }, 'Import project…');
+  const importButton = el('button.secondary', { type: 'button' }, 'Import project…');
   importButton.addEventListener('click', () => importInput.click());
 
   const root = el('div', [
     el('form', { onsubmit: (e) => e.preventDefault() }, [
       el('label', ['Project name', nameInput]),
       el('label', ['Box type', boxTypeSelect]),
-      fieldsContainer,
+      fieldsetsContainer,
       errorBox,
-      summaryBox,
-      el('div', { class: 'grid' }, [exportButton, importButton, importInput]),
+      readout,
+      el('div.actions', [exportButton, importButton, importInput]),
     ]),
-    el('article', [el('h4', 'On-axis response'), responseChartContainer]),
-    excursionArticle,
+    el('div.chart-panel', [el('h2', 'On-axis response'), responseChartContainer]),
+    excursionPanel,
   ]);
 
   rebuildFields();
   mount(document.getElementById('app'), root);
 
+  const theme = chartTheme();
   const chartOptionsFor = (yLabel) => ({
     width: responseChartContainer.clientWidth,
     height: 320,
     scales: { x: { time: false, distr: 3 /* log */ } },
     axes: [
-      { label: 'Frequency (Hz)', values: (_u, vals) => vals.map((v) => (v >= 1000 ? `${v / 1000}k` : v)) },
-      { label: yLabel },
+      {
+        label: 'Frequency (Hz)',
+        values: (_u, vals) => vals.map((v) => (v >= 1000 ? `${v / 1000}k` : v)),
+        stroke: theme.inkMuted,
+        grid: { stroke: theme.border, width: 1 },
+        font: `12px ${theme.fontSans}`,
+      },
+      { label: yLabel, stroke: theme.inkMuted, grid: { stroke: theme.border, width: 1 }, font: `12px ${theme.fontSans}` },
     ],
-    series: [{}, { label: yLabel, stroke: '#1095c1', width: 2 }],
+    series: [{}, { label: yLabel, stroke: theme.accent, width: 2 }],
   });
 
   responseChart = new uPlot(chartOptionsFor('Gain relative to infinite baffle (dB)'), [[1, 2], [0, 0]], responseChartContainer);

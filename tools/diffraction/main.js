@@ -1,6 +1,7 @@
 import { el, mount } from '../../vendor/redom/redom.es.min.js';
 import uPlot from '../../vendor/uplot/uPlot.esm.js';
 import { baffleDiffractionDb, logSpace } from '../../src/diffraction.js';
+import { chartTheme } from '../../src/chart-theme.js';
 
 const SCHEMA_VERSION = 1;
 const KIND = 'diffraction';
@@ -8,7 +9,7 @@ const KIND = 'diffraction';
 const DEFAULT_PROJECT = {
   schemaVersion: SCHEMA_VERSION,
   kind: KIND,
-  name: 'Untitled baffle',
+  name: 'Example: 6.5" two-way baffle',
   baffleWidthMm: 300,
   baffleHeightMm: 500,
   driverOffsetXMm: 150,
@@ -17,14 +18,30 @@ const DEFAULT_PROJECT = {
   listenDistanceMm: 1000,
 };
 
-const FIELDS = [
-  { key: 'baffleWidthMm', label: 'Baffle width (mm)', min: 50 },
-  { key: 'baffleHeightMm', label: 'Baffle height (mm)', min: 50 },
-  { key: 'driverOffsetXMm', label: 'Driver offset from left (mm)', min: 0 },
-  { key: 'driverOffsetYMm', label: 'Driver offset from top (mm)', min: 0 },
-  { key: 'driverDiameterMm', label: 'Driver cone diameter (mm)', min: 0 },
-  { key: 'listenDistanceMm', label: 'Listening distance (mm)', min: 100 },
+const FIELD_GROUPS = [
+  {
+    legend: 'Baffle',
+    fields: [
+      { key: 'baffleWidthMm', label: 'Width (mm)', min: 50, hint: 'Edge to edge across the front panel' },
+      { key: 'baffleHeightMm', label: 'Height (mm)', min: 50, hint: 'Edge to edge, top to bottom' },
+    ],
+  },
+  {
+    legend: 'Driver position',
+    fields: [
+      { key: 'driverOffsetXMm', label: 'Offset from left (mm)', min: 0, hint: 'Driver centre to the nearest side edge' },
+      { key: 'driverOffsetYMm', label: 'Offset from top (mm)', min: 0, hint: 'Driver centre to the top edge' },
+      { key: 'driverDiameterMm', label: 'Cone diameter (mm)', min: 0, hint: 'Softens ripple vs. treating the driver as a point source' },
+    ],
+  },
+  {
+    legend: 'Listening position',
+    fields: [
+      { key: 'listenDistanceMm', label: 'On-axis distance (mm)', min: 100, hint: 'Measurement/listening distance from the baffle' },
+    ],
+  },
 ];
+const FIELDS = FIELD_GROUPS.flatMap((g) => g.fields);
 
 function loadProject() {
   try {
@@ -70,23 +87,26 @@ function App() {
   let project = loadProject();
   const inputs = {};
 
-  const fieldRows = FIELDS.map(({ key, label, min }) => {
-    const input = el('input', {
-      type: 'number',
-      min,
-      step: 'any',
-      value: project[key],
-      id: `field-${key}`,
-    });
-    inputs[key] = input;
-    return el('label', [label, input]);
-  });
+  const fieldsets = FIELD_GROUPS.map(({ legend, fields }) =>
+    el('fieldset', [
+      el('legend', legend),
+      el(
+        'div.field-grid',
+        fields.map(({ key, label, min, hint }) => {
+          const input = el('input', { type: 'number', min, step: 'any', value: project[key], id: `field-${key}` });
+          input.addEventListener('input', recompute);
+          inputs[key] = input;
+          return el('label', [label, input, el('small.hint', hint)]);
+        })
+      ),
+    ])
+  );
 
   const nameInput = el('input', { type: 'text', value: project.name, id: 'field-name' });
-  const errorBox = el('p', { style: { color: 'var(--pico-del-color)', display: 'none' } });
+  const errorBox = el('p.error-text', { style: { display: 'none' } });
 
   const chartContainer = el('div');
-  let chart; // created once chartContainer is mounted and has a real width
+  let chart;
 
   function recompute() {
     for (const { key, min } of FIELDS) {
@@ -111,7 +131,6 @@ function App() {
     }
   }
 
-  for (const input of Object.values(inputs)) input.addEventListener('input', recompute);
   nameInput.addEventListener('input', recompute);
 
   const exportButton = el('button', { type: 'button' }, 'Export project (.json)');
@@ -133,32 +152,43 @@ function App() {
       errorBox.style.display = '';
     }
   });
-  const importButton = el('button', { type: 'button', class: 'secondary' }, 'Import project…');
+  const importButton = el('button.secondary', { type: 'button' }, 'Import project…');
   importButton.addEventListener('click', () => importInput.click());
 
   const root = el('div', [
     el('form', { onsubmit: (e) => e.preventDefault() }, [
       el('label', ['Project name', nameInput]),
-      el('div', { class: 'grid' }, fieldRows),
+      ...fieldsets,
       errorBox,
-      el('div', { class: 'grid' }, [exportButton, importButton, importInput]),
+      el('div.actions', [exportButton, importButton, importInput]),
     ]),
-    el('article', [chartContainer]),
+    el('div.chart-panel', [el('h2', 'On-axis response'), chartContainer]),
   ]);
 
   mount(document.getElementById('app'), root);
 
-  // Only now does chartContainer have a real layout width to size the chart to.
+  const theme = chartTheme();
   chart = new uPlot(
     {
       width: chartContainer.clientWidth,
       height: 360,
       scales: { x: { time: false, distr: 3 /* log */ } },
       axes: [
-        { label: 'Frequency (Hz)', values: (_u, vals) => vals.map((v) => (v >= 1000 ? `${v / 1000}k` : v)) },
-        { label: 'Gain relative to infinite baffle (dB)' },
+        {
+          label: 'Frequency (Hz)',
+          values: (_u, vals) => vals.map((v) => (v >= 1000 ? `${v / 1000}k` : v)),
+          stroke: theme.inkMuted,
+          grid: { stroke: theme.border, width: 1 },
+          font: `12px ${theme.fontSans}`,
+        },
+        {
+          label: 'Gain relative to infinite baffle (dB)',
+          stroke: theme.inkMuted,
+          grid: { stroke: theme.border, width: 1 },
+          font: `12px ${theme.fontSans}`,
+        },
       ],
-      series: [{}, { label: 'On-axis response', stroke: '#1095c1', width: 2 }],
+      series: [{}, { label: 'On-axis response', stroke: theme.accent, width: 2 }],
     },
     [[1, 2], [0, 0]],
     chartContainer

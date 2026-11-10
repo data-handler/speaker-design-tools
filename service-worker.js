@@ -1,11 +1,16 @@
-const CACHE_NAME = 'speaker-design-tools-v3';
+const CACHE_NAME = 'speaker-design-tools-v4';
 
 const APP_SHELL = [
   '/',
   '/index.html',
   '/manifest.json',
   '/icons/icon.svg',
-  '/vendor/pico/pico.min.css',
+  '/css/app.css',
+  '/vendor/fonts/jetbrains-mono-latin-400-normal.woff2',
+  '/vendor/fonts/jetbrains-mono-latin-700-normal.woff2',
+  '/vendor/fonts/public-sans-latin-400-normal.woff2',
+  '/vendor/fonts/public-sans-latin-500-normal.woff2',
+  '/vendor/fonts/public-sans-latin-700-normal.woff2',
   '/vendor/redom/redom.es.min.js',
   '/vendor/uplot/uPlot.esm.js',
   '/vendor/uplot/uPlot.min.css',
@@ -13,6 +18,7 @@ const APP_SHELL = [
   '/src/diffraction.js',
   '/src/sealed-box.js',
   '/src/vented-box.js',
+  '/src/chart-theme.js',
   '/tools/diffraction/',
   '/tools/diffraction/index.html',
   '/tools/diffraction/main.js',

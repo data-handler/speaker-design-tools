@@ -32,10 +32,14 @@ npm test
 - `tools/<tool-name>/` — one self-contained page + script per tool
 - `src/<tool-name>.js` — that tool's pure calculation code, unit-tested
   independently of its UI (e.g. `src/diffraction.js`)
-- `vendor/` — vendored third-party libraries (RE:DOM, Pico CSS, uPlot),
-  committed directly so the PWA app shell works fully offline with no
-  build/bundle step
+- `css/app.css` — the house style (design tokens, fonts, components);
+  not a third-party library, so it lives outside `vendor/`
+- `vendor/` — vendored third-party libraries (RE:DOM, uPlot) and
+  self-hosted font files, committed directly so the PWA app shell works
+  fully offline with no build/bundle step
 - `src/register-sw.js` — shared service worker registration
+- `src/chart-theme.js` — reads the CSS design tokens so uPlot's canvas-drawn
+  charts match light/dark mode
 - `service-worker.js` — app-shell cache-first service worker
 - `manifest.json` — PWA manifest
 - `test/` — `node --test` suites for the calculation code
@@ -43,8 +47,9 @@ npm test
 ## Stack
 
 - [RE:DOM](https://redom.js.org/) for UI, in the classic `el`/`mount` style
-- [Pico CSS](https://picocss.com/) for styling (light/dark via
-  `prefers-color-scheme`, no JS required)
+- Hand-written CSS (`css/app.css`): a small design-token system, light/dark
+  via `prefers-color-scheme`, no JS required. Self-hosted JetBrains Mono +
+  Public Sans (`vendor/fonts/`)
 - [uPlot](https://github.com/leeoniya/uPlot) for charts
 - Plain JavaScript, ES modules, no bundler
 - Each tool currently persists its current design to `localStorage` and

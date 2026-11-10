@@ -5,20 +5,25 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Box Modeller &mdash; Speaker Design Tools</title>
   <link rel="manifest" href="../../manifest.json">
-  <meta name="theme-color" content="#1095c1">
+  <meta name="theme-color" content="#3e2e22">
   <link rel="icon" href="../../icons/icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="../../vendor/pico/pico.min.css">
+  <link rel="stylesheet" href="../../css/app.css">
   <link rel="stylesheet" href="../../vendor/uplot/uPlot.min.css">
 </head>
 <body>
-  <main class="container">
-    <header style="padding-top: 2rem;">
-      <nav aria-label="breadcrumb">
-        <ul>
-          <li><a href="../../">Speaker Design Tools</a></li>
-          <li>Box Modeller</li>
-        </ul>
+  <header class="site-header">
+    <div class="container">
+      <a class="brand" href="/">Speaker Design Tools</a>
+      <nav class="site-nav">
+        <a href="../diffraction/">Diffraction</a>
+        <a href="./" aria-current="page">Box modeller</a>
       </nav>
+    </div>
+  </header>
+
+  <main class="container">
+    <header>
+      <p class="breadcrumb"><a href="../../">Speaker Design Tools</a> / Box Modeller</p>
       <h1>Box Modeller</h1>
       <p>Sealed and vented box alignment from Thiele-Small parameters
         (R. Small, &ldquo;Direct Radiator Loudspeaker System Analysis&rdquo; and
@@ -30,9 +35,7 @@
       <!-- RE:DOM-mounted tool UI goes here -->
     </section>
 
-    <footer style="padding: 2rem 0;">
-      <small>Inspired by the work of the late Jeff Bagby. Not affiliated with or endorsed by his estate.</small>
-    </footer>
+    <footer>Inspired by the work of the late Jeff Bagby. Not affiliated with or endorsed by his estate.</footer>
   </main>
 
   <script type="module" src="./main.js"></script>

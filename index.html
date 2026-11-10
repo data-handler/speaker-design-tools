@@ -6,44 +6,45 @@
   <title>Speaker Design Tools</title>
   <meta name="description" content="Free, browser-based loudspeaker design tools for DIY builders: baffle diffraction, box alignment and more.">
   <link rel="manifest" href="manifest.json">
-  <meta name="theme-color" content="#1095c1">
+  <meta name="theme-color" content="#3e2e22">
   <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="vendor/pico/pico.min.css">
-  <style>
-    :root { --pico-font-size: 100%; }
-    .tool-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: 1rem; }
-    .tool-card { height: 100%; }
-    .tool-card.disabled { opacity: 0.6; }
-    footer small { color: var(--pico-muted-color); }
-  </style>
+  <link rel="stylesheet" href="css/app.css">
 </head>
 <body>
+  <header class="site-header">
+    <div class="container">
+      <a class="brand" href="/">Speaker Design Tools</a>
+      <nav class="site-nav">
+        <a href="tools/diffraction/">Diffraction</a>
+        <a href="tools/box/">Box modeller</a>
+      </nav>
+    </div>
+  </header>
+
   <main class="container">
-    <header style="padding-top: 2rem;">
-      <h1>Speaker Design Tools</h1>
-      <p>Free, browser-based loudspeaker design tools for DIY builders. Everything runs locally in your browser &mdash; no accounts, no uploads, nothing leaves your device.</p>
+    <header>
+      <h1>Design tools for DIY speaker builders</h1>
+      <p>Free and browser-based. Everything runs locally &mdash; no accounts, no uploads, nothing leaves your device.</p>
     </header>
 
     <section class="tool-grid">
       <article class="tool-card">
         <h2>Baffle Diffraction</h2>
         <p>Model baffle-step and edge-diffraction loss for a driver and cabinet layout, using the Vanderkooy edge-diffraction method.</p>
-        <a href="tools/diffraction/" role="button">Open tool</a>
+        <a href="tools/diffraction/" class="button-like">Open tool</a>
       </article>
 
       <article class="tool-card">
         <h2>Box Modeller</h2>
         <p>Sealed and vented box alignment from Thiele&ndash;Small parameters. Passive-radiator support is coming later.</p>
-        <a href="tools/box/" role="button">Open tool</a>
+        <a href="tools/box/" class="button-like">Open tool</a>
       </article>
     </section>
 
-    <footer style="padding: 2rem 0;">
-      <small>
-        Inspired by the work of the late Jeff Bagby, whose free design tools helped a generation of DIY speaker builders.
-        Not affiliated with or endorsed by Jeff Bagby's estate. Built from scratch from published maths and physics &mdash;
-        source on <a href="https://github.com/data-handler/speaker-design-tools">GitHub</a>.
-      </small>
+    <footer>
+      Inspired by the work of the late Jeff Bagby, whose free design tools helped a generation of DIY speaker builders.
+      Not affiliated with or endorsed by Jeff Bagby's estate. Built from scratch from published maths and physics &mdash;
+      source on <a href="https://github.com/data-handler/speaker-design-tools">GitHub</a>.
     </footer>
   </main>
 

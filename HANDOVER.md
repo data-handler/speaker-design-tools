@@ -56,6 +56,13 @@ Start small and get one tool genuinely good before moving on.
   and a `kind` discriminator (e.g. `"diffraction"`, `"sealed-box"`). Add a migration function
   per tool whenever the schema changes; never delete an old migration step.
 - **License:** MIT, matching the main site.
+- **Styling:** dropped Pico CSS (originally listed under Stack and code
+  style above) in favour of a small hand-written design system
+  (`css/app.css`) once the UI needed to carry real information density
+  (grouped Thiele-Small inputs, inline help, a computed-result readout) that
+  a generic component library wasn't shaped for. Palette and type are drawn
+  from the hardware itself (plywood, brass terminals, meter dials) rather
+  than a generic theme; self-hosted JetBrains Mono + Public Sans.
 
 ## Progress
 
