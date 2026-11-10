@@ -1,4 +1,4 @@
-const CACHE_NAME = 'speaker-design-tools-v1';
+const CACHE_NAME = 'speaker-design-tools-v2';
 
 const APP_SHELL = [
   '/',
@@ -7,9 +7,13 @@ const APP_SHELL = [
   '/icons/icon.svg',
   '/vendor/pico/pico.min.css',
   '/vendor/redom/redom.es.min.js',
+  '/vendor/uplot/uPlot.esm.js',
+  '/vendor/uplot/uPlot.min.css',
   '/src/register-sw.js',
+  '/src/diffraction.js',
   '/tools/diffraction/',
   '/tools/diffraction/index.html',
+  '/tools/diffraction/main.js',
 ];
 
 self.addEventListener('install', (event) => {
