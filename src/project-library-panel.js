@@ -12,14 +12,14 @@ import { upsertProject, removeProject, sortByRecency, loadLibrary, saveLibrary }
 /**
  * @param {{
  *   kind: string,
- *   getProjectName: () => string,
+ *   nameInput: HTMLInputElement,
  *   getProjectData: () => object,
  *   applyProjectData: (data: object) => void,
  *   defaultProjectData: object,
  * }} options
  * @returns {{element: HTMLElement}}
  */
-export function createProjectLibraryPanel({ kind, getProjectName, getProjectData, applyProjectData, defaultProjectData }) {
+export function createProjectLibraryPanel({ kind, nameInput, getProjectData, applyProjectData, defaultProjectData }) {
   let records = sortByRecency(loadLibrary(kind));
   let openId = null; // the library entry currently loaded into the editor, if any
 
@@ -42,7 +42,7 @@ export function createProjectLibraryPanel({ kind, getProjectName, getProjectData
     listContainer.textContent = '';
     listSummary.textContent = records.length === 0 ? 'Saved designs (none yet)' : `Saved designs (${records.length})`;
     if (records.length === 0) {
-      listContainer.appendChild(el('p.hint', 'Nothing saved yet — use Save above to add this one.'));
+      listContainer.appendChild(el('p.hint', 'Nothing saved yet — name and save the design below to add one.'));
       return;
     }
     for (const record of records) {
@@ -81,7 +81,7 @@ export function createProjectLibraryPanel({ kind, getProjectName, getProjectData
   }
 
   function doSave(forceNew) {
-    const name = getProjectName() || 'Untitled';
+    const name = nameInput.value || 'Untitled';
     const { records: next, id } = upsertProject(records, {
       id: forceNew ? undefined : openId,
       name,
@@ -109,16 +109,19 @@ export function createProjectLibraryPanel({ kind, getProjectName, getProjectData
   renderList();
   updateSaveButton();
 
-  // The save/open/new actions act directly on the project name field right
-  // above this panel - that's deliberately the visually prominent part.
-  // Browsing *other* saved designs is a separate, less frequent action, so
-  // it's tucked into its own collapsible section rather than competing with
-  // the current one for attention.
+  // Browsing/opening a saved design comes first, deliberately before the
+  // name field: a saved design already has its own name, so leading with
+  // "name this" and only mentioning "or open one" as an afterthought had it
+  // backwards - opening one replaces the name (and everything else) anyway.
+  // Naming and saving *this* design is the second, separate step, once you
+  // know that's what you're doing.
   const element = el('div', [
-    el('p.hint', 'Save this design under its name above, or open one you’ve saved before.'),
+    el('p.hint', 'Open a design you’ve saved before:'),
+    el('details', [listSummary, listContainer]),
+    el('p.hint', { style: { marginTop: '1rem' } }, 'Or keep working on this one - name it and save it to come back to later:'),
+    el('label', ['Project name', nameInput]),
     el('div.actions', [saveButton, saveAsNewButton, newButton]),
     statusBox,
-    el('details', [listSummary, listContainer]),
   ]);
 
   return { element };

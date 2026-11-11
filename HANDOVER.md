@@ -174,13 +174,15 @@ Start small and get one tool genuinely good before moving on.
   up). Fixed both by correcting the call order and by making `recompute()` itself skip a
   round when the chart's series count doesn't match the current driver count, rather than
   only patching the specific call sites that happened to be exercised by testing.
-  Placement and labelling were revised after direct feedback that the first version was
-  confusing: "Saved projects" sat between the editable fields and the charts (reported
-  separately and fixed first - see the layout commit), and even moved next to Project name it
-  still read as two competing, unexplained "naming" surfaces stacked on top of each other.
-  `src/project-library-panel.js` now opens with one line of copy explicitly tying it to the
-  name field above ("Save this design under its name above, or open one you've saved
-  before"), and the Save/Save as new/New actions (acting on what's open right now) are
-  visually separated from browsing *other* saved designs, which sits in its own
-  collapsed-by-default `<details>` section rather than competing for attention with the
-  current one.
+  Placement and labelling were revised twice after direct feedback that it was confusing.
+  First: "Saved projects" sat between the editable fields and the charts, and even moved next
+  to Project name it still read as two competing, unexplained "naming" surfaces stacked on
+  top of each other. Second, sharper piece of feedback: a *saved* design already has its own
+  name, so leading with a name field and only mentioning "or open one" as an afterthought had
+  the order backwards - opening one replaces that name (and everything else) anyway, so
+  naming only applies to the "keep working on this one" path, not before you've even chosen
+  that path. `src/project-library-panel.js` now owns the project name field directly (passed
+  in as `nameInput` rather than each tool rendering it separately) and orders itself
+  accordingly: open a saved design first (collapsed-by-default `<details>` list, so it doesn't
+  compete for attention), *then* - as a clearly separate, later step - name and save the one
+  you're currently working on.

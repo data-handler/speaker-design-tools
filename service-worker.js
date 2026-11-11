@@ -1,4 +1,4 @@
-const CACHE_NAME = 'speaker-design-tools-v13';
+const CACHE_NAME = 'speaker-design-tools-v14';
 
 const APP_SHELL = [
   '/',

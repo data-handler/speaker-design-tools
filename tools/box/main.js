@@ -241,7 +241,7 @@ function App() {
 
   const projectLibraryPanel = createProjectLibraryPanel({
     kind: KIND,
-    getProjectName: () => project.name,
+    nameInput,
     getProjectData: () => project,
     applyProjectData: applyProject,
     defaultProjectData: DEFAULT_PROJECT,
@@ -249,7 +249,6 @@ function App() {
 
   const root = el('div', [
     el('form', { onsubmit: (e) => e.preventDefault() }, [
-      el('label', ['Project name', nameInput]),
       el('fieldset', [el('legend', 'Save or open a design'), projectLibraryPanel.element]),
       el(
         'small.hint',
