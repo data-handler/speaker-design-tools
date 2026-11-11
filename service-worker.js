@@ -1,4 +1,4 @@
-const CACHE_NAME = 'speaker-design-tools-v4';
+const CACHE_NAME = 'speaker-design-tools-v5';
 
 const APP_SHELL = [
   '/',
@@ -19,12 +19,19 @@ const APP_SHELL = [
   '/src/sealed-box.js',
   '/src/vented-box.js',
   '/src/chart-theme.js',
+  '/src/complex.js',
+  '/src/measurement-import.js',
+  '/src/resample.js',
+  '/src/crossover-network.js',
   '/tools/diffraction/',
   '/tools/diffraction/index.html',
   '/tools/diffraction/main.js',
   '/tools/box/',
   '/tools/box/index.html',
   '/tools/box/main.js',
+  '/tools/crossover/',
+  '/tools/crossover/index.html',
+  '/tools/crossover/main.js',
 ];
 
 self.addEventListener('install', (event) => {

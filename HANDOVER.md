@@ -84,6 +84,17 @@ Start small and get one tool genuinely good before moving on.
   (~50 Hz vs. 36 Hz), so it's not just a close-enough approximation. The actual primary
   source (R. Small, "Passive-Radiator Loudspeaker Systems" Parts 1 & 2, JAES 1974) is paywalled
   in the AES E-Library and wasn't accessible. Revisit if/when the papers or a trustworthy full
-  reproduction of them turns up. Vented-box cone excursion also still pending (a separate,
-  not-yet-derived transfer function from the acoustic output one implemented above).
-- **Passive crossover simulation (item 3):** not started, per the stated plan.
+  reproduction of them turns up.
+- **Passive crossover simulation (item 3): started.** Core maths is in place and validated:
+  `.frd`/`.zma` file parsing (`src/measurement-import.js`), log-frequency resampling of
+  measured data onto a common grid (`src/resample.js`), and a two-port (ABCD matrix) network
+  solver for series/shunt R-L-C ladder networks (`src/crossover-network.js`) — checked against
+  textbook closed-form filter responses (a plain voltage divider, a first-order RC low-pass,
+  and a second-order Butterworth L-C low-pass matched point-for-point against its exact
+  `1/(1+(f/fc)^4)` formula across the full audio band), not just spot-checked. `src/complex.js`
+  is a new shared complex-number module (vented-box.js's excursion maths now imports from it
+  too, rather than keeping its own copy). The crossover tool UI handles one driver so far:
+  import its `.frd` (and optionally `.zma`, falling back to a flat nominal impedance if not
+  given), build a component list, see the raw vs. filtered response. Still to do: summing
+  multiple drivers with level and time/phase alignment, off-axis/power response, and a
+  friendlier way to build common filter orders/topologies than entering components one by one.

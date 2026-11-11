@@ -36,19 +36,11 @@
 // rises steeply below Fb (the port stops providing control). See
 // test/vented-box.test.js.
 
+import { complexAdd, complexMul, complexDiv, complexInv, complexMagnitude, imaginary } from './complex.js';
+
 const DEFAULT_LEAKAGE_Q = 1e6; // effectively lossless unless the caller overrides it
 const AIR_DENSITY_KG_M3 = 1.2;
 const SPEED_OF_SOUND_MPS = 343;
-
-const complexAdd = (a, b) => [a[0] + b[0], a[1] + b[1]];
-const complexMul = (a, b) => [a[0] * b[0] - a[1] * b[1], a[0] * b[1] + a[1] * b[0]];
-const complexDiv = (a, b) => {
-  const denom = b[0] * b[0] + b[1] * b[1];
-  return [(a[0] * b[0] + a[1] * b[1]) / denom, (a[1] * b[0] - a[0] * b[1]) / denom];
-};
-const complexInv = (a) => complexDiv([1, 0], a);
-const complexMagnitude = (a) => Math.hypot(a[0], a[1]);
-const imaginary = (x) => [0, x];
 
 /**
  * @param {object} p
