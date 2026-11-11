@@ -10,5 +10,6 @@ export function chartTheme() {
     inkMuted: read('--color-ink-muted'),
     border: read('--color-border'),
     fontSans: read('--font-sans'),
+    series: [read('--color-series-1'), read('--color-series-2'), read('--color-series-3'), read('--color-series-4')],
   };
 }

@@ -5,22 +5,11 @@ import { parseFrd, parseZma } from '../../src/measurement-import.js';
 import { resampleMagnitudePhase } from '../../src/resample.js';
 import { networkTransferFunction } from '../../src/crossover-network.js';
 import { complexMul, complexMagnitude, fromPolar, fromPolarDb, real } from '../../src/complex.js';
+import { applyLevelDelayPolarity, sumResponses, distanceMmToDelayMs } from '../../src/driver-combine.js';
 import { chartTheme } from '../../src/chart-theme.js';
 
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 const KIND = 'crossover';
-
-const DEFAULT_PROJECT = {
-  schemaVersion: SCHEMA_VERSION,
-  kind: KIND,
-  name: 'Untitled crossover',
-  frdText: '',
-  frdFileName: '',
-  zmaText: '',
-  zmaFileName: '',
-  nominalImpedanceOhm: 8,
-  components: [],
-};
 
 // Component values are stored (and edited) in these practical units, and
 // converted to SI only when calling the solver - so project files stay
@@ -32,16 +21,62 @@ const UNIT = {
 };
 const COMMON_FREQS = logSpace(20, 20000, 400);
 
+function defaultDriver(name) {
+  return {
+    name,
+    frdText: '',
+    frdFileName: '',
+    zmaText: '',
+    zmaFileName: '',
+    nominalImpedanceOhm: 8,
+    components: [],
+    levelDb: 0,
+    distanceMm: 0,
+    invertPolarity: false,
+  };
+}
+
+const DEFAULT_PROJECT = {
+  schemaVersion: SCHEMA_VERSION,
+  kind: KIND,
+  name: 'Untitled crossover',
+  drivers: [defaultDriver('Woofer')],
+};
+
+// v1 projects stored a single driver's fields directly on the project.
+// Migrations are additive and kept even once nothing writes v1 any more,
+// so an old exported project file still opens.
+function migrateProject(parsed) {
+  if (parsed.schemaVersion === 1) {
+    return {
+      schemaVersion: SCHEMA_VERSION,
+      kind: KIND,
+      name: parsed.name,
+      drivers: [
+        {
+          ...defaultDriver('Driver 1'),
+          frdText: parsed.frdText || '',
+          frdFileName: parsed.frdFileName || '',
+          zmaText: parsed.zmaText || '',
+          zmaFileName: parsed.zmaFileName || '',
+          nominalImpedanceOhm: parsed.nominalImpedanceOhm ?? 8,
+          components: parsed.components || [],
+        },
+      ],
+    };
+  }
+  return parsed;
+}
+
 function loadProject() {
   try {
     const saved = localStorage.getItem('crossover-project');
-    if (!saved) return { ...DEFAULT_PROJECT, components: [] };
-    const parsed = JSON.parse(saved);
-    if (parsed.kind !== KIND) return { ...DEFAULT_PROJECT, components: [] };
-    // No migrations exist yet; add one per schemaVersion bump when needed.
-    return { ...DEFAULT_PROJECT, ...parsed };
+    if (!saved) return structuredClone(DEFAULT_PROJECT);
+    const parsed = migrateProject(JSON.parse(saved));
+    if (parsed.kind !== KIND) return structuredClone(DEFAULT_PROJECT);
+    return { ...structuredClone(DEFAULT_PROJECT), ...parsed };
   } catch {
-    return { ...DEFAULT_PROJECT, components: [] };
+    return structuredClone(DEFAULT_PROJECT);
   }
 }
 
@@ -59,13 +94,16 @@ function downloadJson(project) {
   URL.revokeObjectURL(url);
 }
 
-function computeCurves(project) {
-  const frd = parseFrd(project.frdText);
+// A driver's response after its own crossover network and its level/
+// distance/polarity adjustments - i.e. exactly what it contributes to the
+// acoustic sum.
+function computeDriverContribution(driver) {
+  const frd = parseFrd(driver.frdText);
   const { magnitudeDb: rawDb, phaseDeg: rawPhaseDeg } = resampleMagnitudePhase(frd, COMMON_FREQS);
 
   let loadImpedances;
-  if (project.zmaText) {
-    const zma = parseZma(project.zmaText);
+  if (driver.zmaText) {
+    const zma = parseZma(driver.zmaText);
     // resampleMagnitudePhase interpolates linearly in log-magnitude vs
     // log-frequency, which is exactly what impedance needs too (smooth
     // across a resonance peak); feed it 20*log10(ohms) and convert back
@@ -76,20 +114,39 @@ function computeCurves(project) {
     );
     loadImpedances = Array.from(zMagDb, (db, i) => fromPolar(10 ** (db / 20), zPhaseDeg[i]));
   } else {
-    loadImpedances = Array.from(COMMON_FREQS, () => real(project.nominalImpedanceOhm));
+    loadImpedances = Array.from(COMMON_FREQS, () => real(driver.nominalImpedanceOhm));
   }
 
-  const componentsSi = project.components.map((c) => ({ ...c, value: UNIT[c.type].toSi(c.value) }));
+  const componentsSi = driver.components.map((c) => ({ ...c, value: UNIT[c.type].toSi(c.value) }));
   const transferFunction = networkTransferFunction(COMMON_FREQS, componentsSi, loadImpedances);
 
-  const filteredDb = new Float64Array(COMMON_FREQS.length);
-  for (let i = 0; i < COMMON_FREQS.length; i++) {
-    const driverComplex = fromPolarDb(rawDb[i], rawPhaseDeg[i]);
-    const filteredComplex = complexMul(driverComplex, transferFunction[i]);
-    filteredDb[i] = 20 * Math.log10(complexMagnitude(filteredComplex));
-  }
+  const throughNetwork = Array.from(COMMON_FREQS, (_f, i) => complexMul(fromPolarDb(rawDb[i], rawPhaseDeg[i]), transferFunction[i]));
+  return applyLevelDelayPolarity(COMMON_FREQS, throughNetwork, {
+    levelDb: driver.levelDb,
+    delayMs: distanceMmToDelayMs(driver.distanceMm),
+    invertPolarity: driver.invertPolarity,
+  });
+}
 
-  return { freqs: Array.from(COMMON_FREQS), rawDb: Array.from(rawDb), filteredDb: Array.from(filteredDb) };
+// Returns null if no driver has a measurement loaded yet. One entry per
+// driver is always returned in perDriverDb, in project.drivers order (null
+// for a driver with no .frd yet) - this has to line up 1:1 with the chart's
+// series config (one series per driver, built once in rebuildChart() and
+// not rebuilt just because an individual driver's data changes), or uPlot's
+// own internal per-series bookkeeping goes out of sync with the data array.
+function computeProjectCurves(project) {
+  const responses = project.drivers.map((driver) => (driver.frdText ? computeDriverContribution(driver) : null));
+  const withData = responses.filter(Boolean);
+  if (withData.length === 0) return null;
+
+  const summed = sumResponses(withData);
+  return {
+    freqs: Array.from(COMMON_FREQS),
+    perDriverDb: responses.map((response) =>
+      response ? Array.from(response, (c) => 20 * Math.log10(complexMagnitude(c))) : Array.from(COMMON_FREQS, () => null)
+    ),
+    summedDb: Array.from(summed, (c) => 20 * Math.log10(complexMagnitude(c))),
+  };
 }
 
 function App() {
@@ -99,87 +156,241 @@ function App() {
   const errorBox = el('p.error-text', { style: { display: 'none' } });
   const statusBox = el('p.hint');
 
-  const frdInput = el('input', { type: 'file', accept: '.frd,text/plain', id: 'field-frd' });
-  const frdStatus = el('small.hint', project.frdFileName ? `Loaded: ${project.frdFileName}` : 'No file loaded yet');
-  const zmaInput = el('input', { type: 'file', accept: '.zma,text/plain', id: 'field-zma' });
-  const zmaStatus = el('small.hint', project.zmaFileName ? `Loaded: ${project.zmaFileName}` : 'Optional — a flat nominal impedance is used if not provided');
-  const nominalImpedanceInput = el('input', { type: 'number', min: 0.1, step: 'any', value: project.nominalImpedanceOhm, id: 'field-nominalImpedanceOhm' });
-
-  const componentsContainer = el('div');
-
+  const driversContainer = el('div');
   const chartContainer = el('div');
   let chart;
 
-  function renderComponents() {
-    componentsContainer.textContent = '';
-    project.components.forEach((component, index) => {
-      const typeSelect = el('select', [
-        el('option', { value: 'resistor' }, 'Resistor'),
-        el('option', { value: 'inductor' }, 'Inductor'),
-        el('option', { value: 'capacitor' }, 'Capacitor'),
-      ]);
-      typeSelect.value = component.type;
-      const placementSelect = el('select', [el('option', { value: 'series' }, 'Series'), el('option', { value: 'shunt' }, 'Shunt (to return)')]);
-      placementSelect.value = component.placement;
-      const valueInput = el('input', { type: 'number', min: 0, step: 'any', value: component.value });
-      const unitLabel = el('span.hint', UNIT[component.type].label);
-      const removeButton = el('button.secondary', { type: 'button' }, 'Remove');
+  function componentsEditor(driver, onChange) {
+    const container = el('div');
 
-      typeSelect.addEventListener('change', () => {
-        component.type = typeSelect.value;
-        renderComponents();
-        recompute();
-      });
-      placementSelect.addEventListener('change', () => {
-        component.placement = placementSelect.value;
-        recompute();
-      });
-      valueInput.addEventListener('input', () => {
-        component.value = Number(valueInput.value);
-        recompute();
-      });
-      removeButton.addEventListener('click', () => {
-        project.components.splice(index, 1);
-        renderComponents();
-        recompute();
-      });
+    function renderComponents() {
+      container.textContent = '';
+      driver.components.forEach((component, index) => {
+        const typeSelect = el('select', [
+          el('option', { value: 'resistor' }, 'Resistor'),
+          el('option', { value: 'inductor' }, 'Inductor'),
+          el('option', { value: 'capacitor' }, 'Capacitor'),
+        ]);
+        typeSelect.value = component.type;
+        const placementSelect = el('select', [el('option', { value: 'series' }, 'Series'), el('option', { value: 'shunt' }, 'Shunt (to return)')]);
+        placementSelect.value = component.placement;
+        const valueInput = el('input', { type: 'number', min: 0, step: 'any', value: component.value });
+        const unitLabel = el('span.hint', UNIT[component.type].label);
+        const removeButton = el('button.secondary', { type: 'button' }, 'Remove');
 
-      componentsContainer.appendChild(
-        el('div.field-grid', { style: { marginBottom: '0.75rem', alignItems: 'end' } }, [
-          el('label', [`Component ${index + 1}: type`, typeSelect]),
-          el('label', ['Placement', placementSelect]),
-          el('label', ['Value', valueInput, unitLabel]),
-          el('label', [' ', removeButton]),
-        ])
-      );
+        typeSelect.addEventListener('change', () => {
+          component.type = typeSelect.value;
+          renderComponents();
+          onChange();
+        });
+        placementSelect.addEventListener('change', () => {
+          component.placement = placementSelect.value;
+          onChange();
+        });
+        valueInput.addEventListener('input', () => {
+          component.value = Number(valueInput.value);
+          onChange();
+        });
+        removeButton.addEventListener('click', () => {
+          driver.components.splice(index, 1);
+          renderComponents();
+          onChange();
+        });
+
+        container.appendChild(
+          el('div.field-grid', { style: { marginBottom: '0.75rem', alignItems: 'end' } }, [
+            el('label', [`Component ${index + 1}: type`, typeSelect]),
+            el('label', ['Placement', placementSelect]),
+            el('label', ['Value', valueInput, unitLabel]),
+            el('label', [' ', removeButton]),
+          ])
+        );
+      });
+    }
+
+    const addComponentButton = el('button.secondary', { type: 'button' }, 'Add component');
+    addComponentButton.addEventListener('click', () => {
+      driver.components.push({ type: 'inductor', placement: 'series', value: 1.0 });
+      renderComponents();
+      onChange();
+    });
+
+    renderComponents();
+    return el('div', [container, el('div.actions', [addComponentButton])]);
+  }
+
+  function driverCard(driver, index, seriesColor) {
+    const nameField = el('input', { type: 'text', value: driver.name });
+    const colorDot = el('span.driver-color-dot', { style: { background: seriesColor } });
+    const removeButton = el('button.secondary', { type: 'button' }, 'Remove this driver');
+
+    const frdInput = el('input', { type: 'file', accept: '.frd,text/plain' });
+    const frdStatus = el('small.hint', driver.frdFileName ? `Loaded: ${driver.frdFileName}` : 'No file loaded yet');
+    const zmaInput = el('input', { type: 'file', accept: '.zma,text/plain' });
+    const zmaStatus = el('small.hint', driver.zmaFileName ? `Loaded: ${driver.zmaFileName}` : 'Optional — a flat nominal impedance is used if not provided');
+    const nominalImpedanceInput = el('input', { type: 'number', min: 0.1, step: 'any', value: driver.nominalImpedanceOhm });
+
+    const levelInput = el('input', { type: 'number', step: 'any', value: driver.levelDb });
+    const distanceInput = el('input', { type: 'number', step: 'any', value: driver.distanceMm });
+    const invertCheckbox = el('input', { type: 'checkbox', checked: driver.invertPolarity });
+
+    nameField.addEventListener('input', () => {
+      driver.name = nameField.value;
+      recompute();
+    });
+    // Rebuilding the chart (to pick up the new legend label) on every
+    // keystroke would recreate the canvas while the user is still typing;
+    // 'change' (on blur/Enter) is enough and avoids that.
+    nameField.addEventListener('change', () => {
+      rebuildChart();
+      recompute();
+    });
+    removeButton.addEventListener('click', () => {
+      const atIndex = project.drivers.indexOf(driver);
+      if (atIndex !== -1) project.drivers.splice(atIndex, 1);
+      renderDrivers();
+      rebuildChart();
+      recompute();
+    });
+    nominalImpedanceInput.addEventListener('input', () => {
+      driver.nominalImpedanceOhm = Number(nominalImpedanceInput.value);
+      recompute();
+    });
+    levelInput.addEventListener('input', () => {
+      driver.levelDb = Number(levelInput.value);
+      recompute();
+    });
+    distanceInput.addEventListener('input', () => {
+      driver.distanceMm = Number(distanceInput.value);
+      recompute();
+    });
+    invertCheckbox.addEventListener('change', () => {
+      driver.invertPolarity = invertCheckbox.checked;
+      recompute();
+    });
+
+    frdInput.addEventListener('change', async () => {
+      const file = frdInput.files[0];
+      if (!file) return;
+      try {
+        const text = await file.text();
+        parseFrd(text); // validate before committing
+        driver.frdText = text;
+        driver.frdFileName = file.name;
+        frdStatus.textContent = `Loaded: ${file.name}`;
+        recompute();
+      } catch (err) {
+        errorBox.textContent = `Could not read ${file.name}: ${err.message}`;
+        errorBox.style.display = '';
+      }
+    });
+
+    zmaInput.addEventListener('change', async () => {
+      const file = zmaInput.files[0];
+      if (!file) return;
+      try {
+        const text = await file.text();
+        parseZma(text); // validate before committing
+        driver.zmaText = text;
+        driver.zmaFileName = file.name;
+        zmaStatus.textContent = `Loaded: ${file.name}`;
+        recompute();
+      } catch (err) {
+        errorBox.textContent = `Could not read ${file.name}: ${err.message}`;
+        errorBox.style.display = '';
+      }
+    });
+
+    return el('details.driver-card', { open: true }, [
+      el('summary', [colorDot, nameField, removeButton]),
+      el('fieldset', [
+        el('legend', 'Driver measurement'),
+        el('div.field-grid', [
+          el('label', ['Response (.frd)', frdInput, frdStatus]),
+          el('label', ['Impedance (.zma, optional)', zmaInput, zmaStatus]),
+          el('label', ['Fallback nominal impedance (Ω)', nominalImpedanceInput, el('small.hint', 'Used only when no .zma is imported')]),
+        ]),
+      ]),
+      el('fieldset', [el('legend', 'Crossover network (source side to driver side)'), componentsEditor(driver, recompute)]),
+      el('fieldset', [
+        el('legend', 'Level & acoustic alignment'),
+        el('div.field-grid', [
+          el('label', ['Level trim (dB)', levelInput, el('small.hint', 'Pads this driver up or down relative to the others')]),
+          el('label', ['Acoustic offset (mm)', distanceInput, el('small.hint', 'How much further this driver’s acoustic centre is from the listening position than the others, e.g. from baffle step or recess depth')]),
+          el('label', ['Polarity', el('div', { style: { display: 'flex', alignItems: 'center', gap: '0.4rem', marginTop: '0.4rem' } }, [invertCheckbox, el('span.hint', { style: { margin: 0 } }, 'Inverted (+ to -)')])]),
+        ]),
+      ]),
+    ]);
+  }
+
+  function renderDrivers() {
+    driversContainer.textContent = '';
+    const theme = chartTheme();
+    project.drivers.forEach((driver, index) => {
+      driversContainer.appendChild(driverCard(driver, index, theme.series[index % theme.series.length]));
     });
   }
 
-  const addComponentButton = el('button.secondary', { type: 'button' }, 'Add component');
-  addComponentButton.addEventListener('click', () => {
-    project.components.push({ type: 'inductor', placement: 'series', value: 1.0 });
-    renderComponents();
+  const addDriverButton = el('button.secondary', { type: 'button' }, 'Add a driver');
+  addDriverButton.addEventListener('click', () => {
+    project.drivers.push(defaultDriver(`Driver ${project.drivers.length + 1}`));
+    renderDrivers();
+    rebuildChart();
     recompute();
   });
 
+  function rebuildChart() {
+    chart?.destroy();
+    chartContainer.textContent = '';
+    const theme = chartTheme();
+    const series = [{}];
+    project.drivers.forEach((driver, index) => {
+      series.push({ label: driver.name, stroke: theme.series[index % theme.series.length], width: 1.5, dash: [4, 3] });
+    });
+    series.push({ label: 'Summed (acoustic total)', stroke: theme.accent, width: 2.5 });
+
+    chart = new uPlot(
+      {
+        width: chartContainer.clientWidth,
+        height: 380,
+        scales: { x: { time: false, distr: 3 /* log */ } },
+        axes: [
+          {
+            label: 'Frequency (Hz)',
+            values: (_u, vals) => vals.map((v) => (v >= 1000 ? `${v / 1000}k` : v)),
+            stroke: theme.inkMuted,
+            grid: { stroke: theme.border, width: 1 },
+            font: `12px ${theme.fontSans}`,
+          },
+          { label: 'SPL (dB)', stroke: theme.inkMuted, grid: { stroke: theme.border, width: 1 }, font: `12px ${theme.fontSans}` },
+        ],
+        series,
+      },
+      [[], ...project.drivers.map(() => []), []],
+      chartContainer
+    );
+  }
+
   function recompute() {
     project.name = nameInput.value;
-    project.nominalImpedanceOhm = Number(nominalImpedanceInput.value);
     saveProject(project);
 
-    if (!project.frdText) {
-      statusBox.textContent = 'Import a .frd file to see the response.';
+    const curves = computeProjectCurves(project);
+    if (!curves) {
+      statusBox.textContent = project.drivers.length
+        ? 'Import a .frd file for at least one driver to see the response.'
+        : 'Add a driver to begin.';
       errorBox.style.display = 'none';
-      chart.setData([[], [], []]);
+      chart.setData([[], ...project.drivers.map(() => []), []]);
       return;
     }
 
     try {
-      const { freqs, rawDb, filteredDb } = computeCurves(project);
-      chart.setData([freqs, rawDb, filteredDb]);
-      statusBox.textContent = project.zmaText
-        ? 'Using the imported impedance measurement.'
-        : `No impedance measurement imported — using a flat ${project.nominalImpedanceOhm} Ω resistive load.`;
+      chart.setData([curves.freqs, ...curves.perDriverDb, curves.summedDb]);
+      const missingFrd = project.drivers.filter((d) => !d.frdText).length;
+      statusBox.textContent = missingFrd
+        ? `Showing ${project.drivers.length - missingFrd} of ${project.drivers.length} drivers — the rest have no .frd imported yet.`
+        : 'Showing the summed acoustic response of all drivers.';
       errorBox.style.display = 'none';
     } catch (err) {
       errorBox.textContent = err.message;
@@ -188,39 +399,6 @@ function App() {
   }
 
   nameInput.addEventListener('input', recompute);
-  nominalImpedanceInput.addEventListener('input', recompute);
-
-  frdInput.addEventListener('change', async () => {
-    const file = frdInput.files[0];
-    if (!file) return;
-    try {
-      const text = await file.text();
-      parseFrd(text); // validate before committing
-      project.frdText = text;
-      project.frdFileName = file.name;
-      frdStatus.textContent = `Loaded: ${file.name}`;
-      recompute();
-    } catch (err) {
-      errorBox.textContent = `Could not read ${file.name}: ${err.message}`;
-      errorBox.style.display = '';
-    }
-  });
-
-  zmaInput.addEventListener('change', async () => {
-    const file = zmaInput.files[0];
-    if (!file) return;
-    try {
-      const text = await file.text();
-      parseZma(text); // validate before committing
-      project.zmaText = text;
-      project.zmaFileName = file.name;
-      zmaStatus.textContent = `Loaded: ${file.name}`;
-      recompute();
-    } catch (err) {
-      errorBox.textContent = `Could not read ${file.name}: ${err.message}`;
-      errorBox.style.display = '';
-    }
-  });
 
   const exportButton = el('button', { type: 'button' }, 'Export project (.json)');
   exportButton.addEventListener('click', () => downloadJson(project));
@@ -230,16 +408,12 @@ function App() {
     const file = importInput.files[0];
     if (!file) return;
     try {
-      const parsed = JSON.parse(await file.text());
+      const parsed = migrateProject(JSON.parse(await file.text()));
       if (parsed.kind !== KIND) throw new Error(`Expected kind "${KIND}", got "${parsed.kind}"`);
-      project = { ...DEFAULT_PROJECT, ...parsed };
+      project = { ...structuredClone(DEFAULT_PROJECT), ...parsed };
       nameInput.value = project.name;
-      nominalImpedanceInput.value = project.nominalImpedanceOhm;
-      frdStatus.textContent = project.frdFileName ? `Loaded: ${project.frdFileName}` : 'No file loaded yet';
-      zmaStatus.textContent = project.zmaFileName
-        ? `Loaded: ${project.zmaFileName}`
-        : 'Optional — a flat nominal impedance is used if not provided';
-      renderComponents();
+      renderDrivers();
+      rebuildChart();
       recompute();
     } catch (err) {
       errorBox.textContent = `Could not load project: ${err.message}`;
@@ -252,57 +426,42 @@ function App() {
   const root = el('div', [
     el('form', { onsubmit: (e) => e.preventDefault() }, [
       el('label', ['Project name', nameInput]),
-      el('fieldset', [
-        el('legend', 'Driver measurement'),
-        el('div.field-grid', [
-          el('label', ['Response (.frd)', frdInput, frdStatus]),
-          el('label', ['Impedance (.zma, optional)', zmaInput, zmaStatus]),
-          el('label', ['Fallback nominal impedance (Ω)', nominalImpedanceInput, el('small.hint', 'Used only when no .zma is imported')]),
-        ]),
-      ]),
-      el('fieldset', [
-        el('legend', 'Crossover network (source side to driver side)'),
-        componentsContainer,
-        el('div.actions', [addComponentButton]),
-      ]),
+      driversContainer,
+      el('div.actions', [addDriverButton]),
       errorBox,
       statusBox,
       el('div.actions', [exportButton, importButton, importInput]),
     ]),
-    el('div.chart-panel', [el('h2', 'Driver response: raw vs. through the crossover'), chartContainer]),
+    el('div.chart-panel', [el('h2', 'Driver and summed response'), chartContainer]),
   ]);
 
-  renderComponents();
+  renderDrivers();
   mount(document.getElementById('app'), root);
-
-  const theme = chartTheme();
-  chart = new uPlot(
-    {
-      width: chartContainer.clientWidth,
-      height: 360,
-      scales: { x: { time: false, distr: 3 /* log */ } },
-      axes: [
-        {
-          label: 'Frequency (Hz)',
-          values: (_u, vals) => vals.map((v) => (v >= 1000 ? `${v / 1000}k` : v)),
-          stroke: theme.inkMuted,
-          grid: { stroke: theme.border, width: 1 },
-          font: `12px ${theme.fontSans}`,
-        },
-        { label: 'SPL (dB)', stroke: theme.inkMuted, grid: { stroke: theme.border, width: 1 }, font: `12px ${theme.fontSans}` },
-      ],
-      series: [
-        {},
-        { label: 'Raw (measured)', stroke: theme.inkMuted, width: 1, dash: [4, 3] },
-        { label: 'Through crossover', stroke: theme.accent, width: 2 },
-      ],
-    },
-    [[], [], []],
-    chartContainer
-  );
-  new ResizeObserver(([entry]) => chart.setSize({ width: entry.contentRect.width, height: 360 })).observe(chartContainer);
-
+  rebuildChart();
   recompute();
+
+  // A single long-lived observer, rather than one per rebuildChart() call -
+  // chart is reassigned on every rebuild, so this always resizes the current
+  // one. ResizeObserver always fires once immediately on observe() even when
+  // nothing has changed, and can also fire from a vertical scrollbar
+  // appearing as driver cards are added - skip same-size calls, and defer
+  // the rest to the next animation frame (uPlot's own setData/setSize both
+  // queue their actual redraw as a microtask, so calling setSize() straight
+  // from the observer can land mid-commit of an unrelated setData() from
+  // the same tick; a pending microtask always resolves before the next
+  // frame, so this ordering is enough to avoid that race).
+  new ResizeObserver(([entry]) => {
+    const width = entry.contentRect.width;
+    if (width === chart.width) return;
+    requestAnimationFrame(() => {
+      try {
+        chart.setSize({ width, height: 380 });
+      } catch {
+        rebuildChart();
+        recompute();
+      }
+    });
+  }).observe(chartContainer);
 }
 
 App();

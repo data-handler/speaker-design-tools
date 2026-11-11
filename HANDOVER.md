@@ -92,9 +92,13 @@ Start small and get one tool genuinely good before moving on.
   textbook closed-form filter responses (a plain voltage divider, a first-order RC low-pass,
   and a second-order Butterworth L-C low-pass matched point-for-point against its exact
   `1/(1+(f/fc)^4)` formula across the full audio band), not just spot-checked. `src/complex.js`
-  is a new shared complex-number module (vented-box.js's excursion maths now imports from it
-  too, rather than keeping its own copy). The crossover tool UI handles one driver so far:
-  import its `.frd` (and optionally `.zma`, falling back to a flat nominal impedance if not
-  given), build a component list, see the raw vs. filtered response. Still to do: summing
-  multiple drivers with level and time/phase alignment, off-axis/power response, and a
+  is a shared complex-number module (vented-box.js's excursion maths imports from it too,
+  rather than keeping its own copy). The project file format (v2) supports any number of
+  drivers, each with its own measurement, crossover network, level trim, acoustic
+  offset (mm, converted to a phase delay) and polarity invert; `src/driver-combine.js`
+  applies those and sums the drivers' complex responses into the modelled acoustic total —
+  validated against known facts (two in-phase identical sources sum to +6.02 dB, an inverted
+  identical pair cancels to silence, a one-period delay is equivalent to no delay). The UI
+  shows each driver's own response plus the summed total on one chart, with v1 (single-driver)
+  project files still opening via a migration. Still to do: off-axis/power response, and a
   friendlier way to build common filter orders/topologies than entering components one by one.

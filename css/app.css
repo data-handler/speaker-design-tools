@@ -49,6 +49,14 @@
   --color-accent-ink: #2b2a26; /* text color to use on top of the accent */
   --color-error: #a3402e;
 
+  /* Categorical chart series (per-driver lines) - a validated colour-blind-safe
+     order, kept separate from --color-accent (reserved for a single summed
+     total curve, told apart from these by line weight, not colour alone). */
+  --color-series-1: #2a78d6;
+  --color-series-2: #eb6834;
+  --color-series-3: #1baf7a;
+  --color-series-4: #6250d6;
+
   --font-sans: 'Public Sans', system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
 
@@ -69,6 +77,11 @@
     --color-accent-strong: #e8b06e;
     --color-accent-ink: #1c1815;
     --color-error: #d97860;
+
+    --color-series-1: #3987e5;
+    --color-series-2: #d95926;
+    --color-series-3: #199e70;
+    --color-series-4: #9085e9;
   }
 }
 
@@ -197,6 +210,49 @@ legend,
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
   gap: 1rem 1.5rem;
+}
+
+/* --- Driver cards (crossover tool): one collapsible section per way --- */
+
+.driver-card {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 0 1.25rem 1.25rem;
+  margin: 0 0 1.25rem;
+}
+.driver-card > summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 0 -1.25rem;
+  padding: 0.9rem 1.25rem;
+  font-family: var(--font-mono);
+  font-weight: 700;
+}
+.driver-card > summary::-webkit-details-marker {
+  display: none;
+}
+.driver-card > summary::before {
+  content: '▸';
+  color: var(--color-ink-muted);
+  font-size: 0.8rem;
+}
+.driver-card[open] > summary::before {
+  content: '▾';
+}
+.driver-card > summary input[type='text'] {
+  flex: 1;
+}
+.driver-color-dot {
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.driver-card > fieldset {
+  margin-top: 1.25rem;
 }
 
 label {

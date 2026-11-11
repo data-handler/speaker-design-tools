@@ -1,4 +1,4 @@
-const CACHE_NAME = 'speaker-design-tools-v5';
+const CACHE_NAME = 'speaker-design-tools-v6';
 
 const APP_SHELL = [
   '/',
@@ -23,6 +23,7 @@ const APP_SHELL = [
   '/src/measurement-import.js',
   '/src/resample.js',
   '/src/crossover-network.js',
+  '/src/driver-combine.js',
   '/tools/diffraction/',
   '/tools/diffraction/index.html',
   '/tools/diffraction/main.js',
