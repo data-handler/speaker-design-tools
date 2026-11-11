@@ -63,6 +63,15 @@ Start small and get one tool genuinely good before moving on.
   that a generic component library wasn't shaped for. Palette and type are drawn from the
   hardware itself (plywood, brass terminals, meter dials) rather than a generic theme;
   self-hosted JetBrains Mono + Public Sans.
+- **Service worker caching:** HTML page navigations are network-first (falling back to the
+  cache only when offline); everything else (JS/CSS/fonts/vendor libs) stays cache-first,
+  since those are already cache-busted by `CACHE_NAME` and cache-first is what makes the app
+  usable offline. A plain cache-first navigation strategy meant a new deploy (e.g. a new
+  tool's card added to the homepage) could sit behind a page's own in-app links indefinitely,
+  invisible until a hard reload — reported directly by a user testing a deploy, reproduced
+  and confirmed fixed with a scripted test before shipping (see the commit for a from-scratch
+  repro: simulate an old cached shell, change the on-disk HTML without touching the service
+  worker, then check whether a normal in-app link navigation picks up the new content).
 
 ## Progress
 

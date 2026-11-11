@@ -1,4 +1,4 @@
-const CACHE_NAME = 'speaker-design-tools-v10';
+const CACHE_NAME = 'speaker-design-tools-v11';
 
 const APP_SHELL = [
   '/',
@@ -39,7 +39,7 @@ const APP_SHELL = [
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL))
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)).then(() => self.skipWaiting())
   );
 });
 
@@ -52,11 +52,34 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
-// Cache-first for the app shell, falling back to network (and caching the result)
-// for anything else same-origin. Never intercept cross-origin requests.
+// HTML documents (page navigations) are network-first, falling back to the
+// cache only when offline: skipWaiting()/clients.claim() above make a new
+// service worker take over promptly, but with a plain cache-first fetch
+// handler that still isn't enough on its own, since a navigation already
+// served from an old, still-controlling worker's cache would never see the
+// new HTML until that worker itself updates - genuinely new content (like a
+// new tool's card on the homepage) could sit behind a page's own in-app
+// links indefinitely, only fixed by a hard reload. Everything else
+// (JS/CSS/fonts/vendor libs) stays cache-first: those are already
+// cache-busted by CACHE_NAME, so there's no staleness risk, and cache-first
+// is what makes the app usable offline. Never intercept cross-origin
+// requests.
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   if (request.method !== 'GET' || new URL(request.url).origin !== self.location.origin) {
+    return;
+  }
+
+  if (request.mode === 'navigate') {
+    event.respondWith(
+      fetch(request)
+        .then((response) => {
+          const copy = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
+          return response;
+        })
+        .catch(() => caches.match(request))
+    );
     return;
   }
 
