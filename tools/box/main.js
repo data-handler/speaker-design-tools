@@ -241,6 +241,10 @@ function App() {
       fieldsetsContainer,
       errorBox,
       readout,
+      el(
+        'small.hint',
+        'Saved automatically in this browser as you work. Export a project file to back it up, move it to another device, or share it — clearing this browser’s site data will otherwise lose it.'
+      ),
       el('div.actions', [exportButton, importButton, importInput]),
     ]),
     el('div.chart-panel', [el('h2', 'On-axis response'), responseChartContainer]),
