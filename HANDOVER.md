@@ -109,7 +109,16 @@ Start small and get one tool genuinely good before moving on.
   Linkwitz-Riley against its defining property (low-pass and high-pass are both exactly
   -6.02dB at the crossover frequency, and sum to an exactly flat response at every frequency
   once one driver's polarity is inverted — confirmed algebraically that this exact
-  cancellation is unique to Q=0.5 before relying on it as a test). Still to do: off-axis/power
-  response, and 3rd/4th-order presets (these need a correctly re-derived single-terminated
-  ladder, not just the published doubly-terminated tables, so are left for when there's time
-  to do that derivation carefully rather than shipping a plausible-looking guess).
+  cancellation is unique to Q=0.5 before relying on it as a test). Each driver can also take
+  off-axis measurements (any number of extra `.frd` files, each tagged with its angle) and
+  shows its own family of angle responses plus an estimated power response
+  (`src/directivity.js`) — a solid-angle-weighted energy average over the measured angles
+  (weights from the standard spherical-zone area formula, not a naive equal- or
+  sin(theta)-per-point average), assuming the driver is axisymmetric and that only the front
+  hemisphere (0-90°) matters, so it's a directivity/early-reflections estimate, not a
+  lab-grade full-sphere sound-power measurement. This is per-driver only so far — summing
+  multiple drivers' off-axis families into a system-level off-axis/power response is still to
+  do, and needs a plan for driver angle grids that don't match (not yet attempted). Also still
+  to do: 3rd/4th-order presets (these need a correctly re-derived single-terminated ladder,
+  not just the published doubly-terminated tables, so are left for when there's time to do
+  that derivation carefully rather than shipping a plausible-looking guess).

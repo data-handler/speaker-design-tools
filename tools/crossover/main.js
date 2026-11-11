@@ -7,6 +7,7 @@ import { networkTransferFunction } from '../../src/crossover-network.js';
 import { complexMul, complexMagnitude, fromPolar, fromPolarDb, real } from '../../src/complex.js';
 import { applyLevelDelayPolarity, sumResponses, distanceMmToDelayMs } from '../../src/driver-combine.js';
 import { presetComponents } from '../../src/crossover-presets.js';
+import { powerResponseDb } from '../../src/directivity.js';
 import { chartTheme } from '../../src/chart-theme.js';
 
 const SCHEMA_VERSION = 2;
@@ -45,7 +46,17 @@ function defaultDriver(name) {
     levelDb: 0,
     distanceMm: 0,
     invertPolarity: false,
+    offAxis: [], // [{ angleDeg, frdText, frdFileName }, ...] - off-axis measurements for this driver's own directivity/power response
   };
+}
+
+// Fills in any fields a driver object is missing (an older saved/exported
+// project, or one that predates a field this version added) with their
+// defaults, without disturbing anything it already has. Additive fields
+// like this don't need a schemaVersion bump - only an incompatible
+// restructuring of the data does.
+function normalizeDriver(driver) {
+  return { ...defaultDriver(driver.name), ...driver };
 }
 
 const DEFAULT_PROJECT = {
@@ -86,7 +97,9 @@ function loadProject() {
     if (!saved) return structuredClone(DEFAULT_PROJECT);
     const parsed = migrateProject(JSON.parse(saved));
     if (parsed.kind !== KIND) return structuredClone(DEFAULT_PROJECT);
-    return { ...structuredClone(DEFAULT_PROJECT), ...parsed };
+    const project = { ...structuredClone(DEFAULT_PROJECT), ...parsed };
+    project.drivers = project.drivers.map(normalizeDriver);
+    return project;
   } catch {
     return structuredClone(DEFAULT_PROJECT);
   }
@@ -106,11 +119,13 @@ function downloadJson(project) {
   URL.revokeObjectURL(url);
 }
 
-// A driver's response after its own crossover network and its level/
-// distance/polarity adjustments - i.e. exactly what it contributes to the
-// acoustic sum.
-function computeDriverContribution(driver) {
-  const frd = parseFrd(driver.frdText);
+// A driver's response through its own crossover network and its level/
+// distance/polarity adjustments, for a given measured response (its own
+// on-axis .frd, or one of its off-axis ones - the network, load impedance
+// and alignment are all properties of the driver and crossover, not of the
+// angle a particular measurement was taken at).
+function computeFilteredResponse(driver, frdText) {
+  const frd = parseFrd(frdText);
   const { magnitudeDb: rawDb, phaseDeg: rawPhaseDeg } = resampleMagnitudePhase(frd, COMMON_FREQS);
 
   let loadImpedances;
@@ -138,6 +153,35 @@ function computeDriverContribution(driver) {
     delayMs: distanceMmToDelayMs(driver.distanceMm),
     invertPolarity: driver.invertPolarity,
   });
+}
+
+// A driver's response after its own crossover network and its level/
+// distance/polarity adjustments - i.e. exactly what it contributes to the
+// acoustic sum.
+function computeDriverContribution(driver) {
+  return computeFilteredResponse(driver, driver.frdText);
+}
+
+// This driver's own directivity: its filtered response at 0 degrees (its
+// main .frd) plus each off-axis angle that has a measurement loaded, sorted
+// by angle, plus the estimated power response across them. Returns null if
+// there are no off-axis measurements loaded yet (directivity needs at least
+// one to say anything a plain on-axis chart doesn't already show).
+function computeDriverDirectivity(driver) {
+  const offAxisWithData = driver.offAxis.filter((m) => m.frdText);
+  if (!driver.frdText || offAxisWithData.length === 0) return null;
+
+  const anglesDeg = [0, ...offAxisWithData.map((m) => m.angleDeg)];
+  const order = anglesDeg.map((_, i) => i).sort((a, b) => anglesDeg[a] - anglesDeg[b]);
+  const sortedAnglesDeg = order.map((i) => anglesDeg[i]);
+  const frdTexts = [driver.frdText, ...offAxisWithData.map((m) => m.frdText)];
+  const dbByAngle = order.map((i) => Array.from(computeFilteredResponse(driver, frdTexts[i]), (c) => 20 * Math.log10(complexMagnitude(c))));
+
+  return {
+    anglesDeg: sortedAnglesDeg,
+    dbByAngle,
+    powerDb: powerResponseDb(sortedAnglesDeg, dbByAngle),
+  };
 }
 
 // Returns null if no driver has a measurement loaded yet. One entry per
@@ -280,6 +324,141 @@ function App() {
     return el('div', [quickFilter, container, el('div.actions', [addComponentButton])]);
   }
 
+  function directivityEditor(driver) {
+    const rowsContainer = el('div');
+    const chartContainer = el('div');
+    const statusBox = el('small.hint');
+    let chart;
+
+    function renderRows() {
+      rowsContainer.textContent = '';
+      driver.offAxis.forEach((entry, index) => {
+        const angleInput = el('input', { type: 'number', min: 0, max: 90, step: 'any', value: entry.angleDeg });
+        const angleFrdInput = el('input', { type: 'file', accept: '.frd,text/plain' });
+        const status = el('small.hint', entry.frdFileName ? `Loaded: ${entry.frdFileName}` : 'No file loaded yet');
+        const removeButton = el('button.secondary', { type: 'button' }, 'Remove');
+
+        angleInput.addEventListener('input', () => {
+          entry.angleDeg = Number(angleInput.value);
+          refresh();
+        });
+        angleFrdInput.addEventListener('change', async () => {
+          const file = angleFrdInput.files[0];
+          if (!file) return;
+          try {
+            const text = await file.text();
+            parseFrd(text); // validate before committing
+            entry.frdText = text;
+            entry.frdFileName = file.name;
+            status.textContent = `Loaded: ${file.name}`;
+            refresh();
+          } catch (err) {
+            errorBox.textContent = `Could not read ${file.name}: ${err.message}`;
+            errorBox.style.display = '';
+          }
+        });
+        removeButton.addEventListener('click', () => {
+          driver.offAxis.splice(index, 1);
+          renderRows();
+          refresh();
+        });
+
+        rowsContainer.appendChild(
+          el('div.field-grid', { style: { marginBottom: '0.75rem', alignItems: 'end' } }, [
+            el('label', [`Angle ${index + 1}: degrees off-axis`, angleInput]),
+            el('label', ['Response (.frd)', angleFrdInput, status]),
+            el('label', [' ', removeButton]),
+          ])
+        );
+      });
+    }
+
+    const addAngleButton = el('button.secondary', { type: 'button' }, 'Add an off-axis angle');
+    addAngleButton.addEventListener('click', () => {
+      driver.offAxis.push({ angleDeg: 30, frdText: '', frdFileName: '' });
+      renderRows();
+      refresh();
+    });
+
+    // This chart is only ever rebuilt wholesale (never setData()-updated in
+    // place, unlike the main chart) - every edit here is an infrequent,
+    // deliberate action (loading a file, typing an angle), not a per-frame
+    // slider drag, so there's no performance reason to optimise it, and
+    // building the series config and the data together in one synchronous
+    // step sidesteps the series/data length mismatch the main chart had to
+    // guard against.
+    function refresh() {
+      saveProject(project);
+      chart?.destroy();
+      chart = null;
+      chartContainer.textContent = '';
+
+      const directivity = computeDriverDirectivity(driver);
+      if (!directivity) {
+        statusBox.textContent = driver.frdText
+          ? 'Add at least one off-axis measurement above to see this driver’s directivity and estimated power response.'
+          : 'Import this driver’s on-axis response (above) first.';
+        return;
+      }
+
+      const theme = chartTheme();
+      const series = [{}];
+      directivity.anglesDeg.forEach((angleDeg, i) => {
+        series.push({ label: `${angleDeg}°`, stroke: theme.series[i % theme.series.length], width: 1.25, dash: angleDeg === 0 ? undefined : [4, 3] });
+      });
+      series.push({ label: 'Estimated power response', stroke: theme.accent, width: 2.25 });
+
+      chart = new uPlot(
+        {
+          width: chartContainer.clientWidth || 600,
+          height: 260,
+          scales: { x: { time: false, distr: 3 /* log */ } },
+          axes: [
+            {
+              label: 'Frequency (Hz)',
+              values: (_u, vals) => vals.map((v) => (v >= 1000 ? `${v / 1000}k` : v)),
+              stroke: theme.inkMuted,
+              grid: { stroke: theme.border, width: 1 },
+              font: `12px ${theme.fontSans}`,
+            },
+            { label: 'SPL (dB)', stroke: theme.inkMuted, grid: { stroke: theme.border, width: 1 }, font: `12px ${theme.fontSans}` },
+          ],
+          series,
+        },
+        [Array.from(COMMON_FREQS), ...directivity.dbByAngle, directivity.powerDb],
+        chartContainer
+      );
+      statusBox.textContent = `Showing ${directivity.anglesDeg.length} measured angle(s) (0–${Math.max(...directivity.anglesDeg)}°) and the estimated power response - an estimate assuming the driver is symmetric about its forward axis and only the front hemisphere matters, not a full-sphere sound-power measurement.`;
+    }
+
+    renderRows();
+    refresh();
+
+    // One long-lived observer rather than one per refresh() (which would
+    // otherwise stack up, since refresh() only clears chartContainer's
+    // children, not the container itself) - chart is reassigned by every
+    // refresh(), so this always resizes whichever instance is current, and
+    // does nothing if refresh() hasn't created one yet (no data loaded).
+    new ResizeObserver(([entry]) => {
+      if (!chart) return;
+      const width = entry.contentRect.width;
+      if (width === chart.width) return;
+      requestAnimationFrame(() => {
+        if (!chart) return;
+        try {
+          chart.setSize({ width, height: 260 });
+        } catch {
+          refresh();
+        }
+      });
+    }).observe(chartContainer);
+
+    return {
+      element: el('div', [rowsContainer, el('div.actions', [addAngleButton]), statusBox, el('div.chart-panel', { style: { marginTop: '1rem' } }, [chartContainer])]),
+      refresh,
+    };
+  }
+
   function driverCard(driver, index, seriesColor) {
     const nameField = el('input', { type: 'text', value: driver.name });
     const colorDot = el('span.driver-color-dot', { style: { background: seriesColor } });
@@ -294,6 +473,17 @@ function App() {
     const levelInput = el('input', { type: 'number', step: 'any', value: driver.levelDb });
     const distanceInput = el('input', { type: 'number', step: 'any', value: driver.distanceMm });
     const invertCheckbox = el('input', { type: 'checkbox', checked: driver.invertPolarity });
+
+    // The off-axis/power-response chart depends on everything that affects
+    // this driver's filtered response (on-axis .frd, impedance, network,
+    // level, offset, polarity) - not just its own off-axis-specific
+    // controls - so anything that calls recompute() below also has to
+    // refresh it, or it goes stale the moment any of those change.
+    const directivity = directivityEditor(driver);
+    function recomputeAll() {
+      recompute();
+      directivity.refresh();
+    }
 
     nameField.addEventListener('input', () => {
       driver.name = nameField.value;
@@ -315,19 +505,19 @@ function App() {
     });
     nominalImpedanceInput.addEventListener('input', () => {
       driver.nominalImpedanceOhm = Number(nominalImpedanceInput.value);
-      recompute();
+      recomputeAll();
     });
     levelInput.addEventListener('input', () => {
       driver.levelDb = Number(levelInput.value);
-      recompute();
+      recomputeAll();
     });
     distanceInput.addEventListener('input', () => {
       driver.distanceMm = Number(distanceInput.value);
-      recompute();
+      recomputeAll();
     });
     invertCheckbox.addEventListener('change', () => {
       driver.invertPolarity = invertCheckbox.checked;
-      recompute();
+      recomputeAll();
     });
 
     frdInput.addEventListener('change', async () => {
@@ -339,7 +529,7 @@ function App() {
         driver.frdText = text;
         driver.frdFileName = file.name;
         frdStatus.textContent = `Loaded: ${file.name}`;
-        recompute();
+        recomputeAll();
       } catch (err) {
         errorBox.textContent = `Could not read ${file.name}: ${err.message}`;
         errorBox.style.display = '';
@@ -355,7 +545,7 @@ function App() {
         driver.zmaText = text;
         driver.zmaFileName = file.name;
         zmaStatus.textContent = `Loaded: ${file.name}`;
-        recompute();
+        recomputeAll();
       } catch (err) {
         errorBox.textContent = `Could not read ${file.name}: ${err.message}`;
         errorBox.style.display = '';
@@ -376,7 +566,7 @@ function App() {
           ]),
         ]),
       ]),
-      el('fieldset', [el('legend', 'Crossover network (source side to driver side)'), networkEditor(driver, recompute)]),
+      el('fieldset', [el('legend', 'Crossover network (source side to driver side)'), networkEditor(driver, recomputeAll)]),
       el('fieldset', [
         el('legend', 'Level & acoustic alignment'),
         el('div.field-grid', [
@@ -385,6 +575,7 @@ function App() {
           el('label', ['Polarity', el('div', { style: { display: 'flex', alignItems: 'center', gap: '0.4rem', marginTop: '0.4rem' } }, [invertCheckbox, el('span.hint', { style: { margin: 0 } }, 'Inverted (+ to -)')])]),
         ]),
       ]),
+      el('fieldset', [el('legend', 'Off-axis & power response (optional)'), directivity.element]),
     ]);
   }
 
@@ -476,6 +667,7 @@ function App() {
       const parsed = migrateProject(JSON.parse(await file.text()));
       if (parsed.kind !== KIND) throw new Error(`Expected kind "${KIND}", got "${parsed.kind}"`);
       project = { ...structuredClone(DEFAULT_PROJECT), ...parsed };
+      project.drivers = project.drivers.map(normalizeDriver);
       nameInput.value = project.name;
       renderDrivers();
       rebuildChart();
