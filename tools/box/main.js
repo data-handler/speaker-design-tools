@@ -2,7 +2,7 @@ import { el, mount } from '../../vendor/redom/redom.es.min.js';
 import uPlot from '../../vendor/uplot/uPlot.esm.js';
 import { logSpace } from '../../src/diffraction.js';
 import { sealedBoxAlignment, sealedBoxResponseDb, sealedBoxExcursionMm } from '../../src/sealed-box.js';
-import { ventedBoxAlignment, ventedBoxResponseDb } from '../../src/vented-box.js';
+import { ventedBoxAlignment, ventedBoxResponseDb, ventedBoxExcursionMm } from '../../src/vented-box.js';
 import { chartTheme } from '../../src/chart-theme.js';
 
 const SCHEMA_VERSION = 1;
@@ -21,6 +21,7 @@ const DEFAULT_PROJECT = {
   blTm: 7,
   reOhm: 6,
   mmsGrams: 15,
+  sdCm2: 133,
   voltageV: 2.83,
 };
 
@@ -38,17 +39,27 @@ const BOX_FIELDS = {
   ],
 };
 
-const EXCURSION_FIELDS = [
-  { key: 'blTm', label: 'Bl - force factor (T·m)', min: 0.1, hint: 'From the datasheet' },
-  { key: 'reOhm', label: 'Re - DC resistance (Ω)', min: 0.1, hint: 'From the datasheet' },
-  { key: 'mmsGrams', label: 'Mms - moving mass (g)', min: 0.1, hint: 'Cone + voice coil + air load' },
-  { key: 'voltageV', label: 'Drive voltage (Vrms)', min: 0.01, hint: 'e.g. 2.83V ≈ 1W into 8Ω' },
-];
+const EXCURSION_FIELDS = {
+  sealed: [
+    { key: 'blTm', label: 'Bl - force factor (T·m)', min: 0.1, hint: 'From the datasheet' },
+    { key: 'reOhm', label: 'Re - DC resistance (Ω)', min: 0.1, hint: 'From the datasheet' },
+    { key: 'mmsGrams', label: 'Mms - moving mass (g)', min: 0.1, hint: 'Cone + voice coil + air load' },
+    { key: 'voltageV', label: 'Drive voltage (Vrms)', min: 0.01, hint: 'e.g. 2.83V ≈ 1W into 8Ω' },
+  ],
+  vented: [
+    { key: 'blTm', label: 'Bl - force factor (T·m)', min: 0.1, hint: 'From the datasheet' },
+    { key: 'reOhm', label: 'Re - DC resistance (Ω)', min: 0.1, hint: 'From the datasheet' },
+    { key: 'sdCm2', label: 'Sd - effective piston area (cm²)', min: 1, hint: 'From the datasheet' },
+    { key: 'voltageV', label: 'Drive voltage (Vrms)', min: 0.01, hint: 'e.g. 2.83V ≈ 1W into 8Ω' },
+  ],
+};
 
 function fieldGroups(project) {
-  const groups = [{ legend: 'Driver (Thiele-Small)', fields: DRIVER_FIELDS }, { legend: 'Enclosure', fields: BOX_FIELDS[project.boxType] }];
-  if (project.boxType === 'sealed') groups.push({ legend: 'Drive signal (for excursion)', fields: EXCURSION_FIELDS });
-  return groups;
+  return [
+    { legend: 'Driver (Thiele-Small)', fields: DRIVER_FIELDS },
+    { legend: 'Enclosure', fields: BOX_FIELDS[project.boxType] },
+    { legend: 'Drive signal (for excursion)', fields: EXCURSION_FIELDS[project.boxType] },
+  ];
 }
 
 function loadProject() {
@@ -128,7 +139,6 @@ function App() {
         ])
       );
     }
-    excursionPanel.style.display = project.boxType === 'sealed' ? '' : 'none';
   }
 
   function recompute() {
@@ -154,11 +164,22 @@ function App() {
       readout.textContent = '';
 
       if (project.boxType === 'vented') {
-        const { h, alpha } = ventedBoxAlignment({ ...sealedParams, fbHz: project.fbHz });
+        const ventedParams = { ...sealedParams, fbHz: project.fbHz };
+        const { h, alpha } = ventedBoxAlignment(ventedParams);
         readout.appendChild(readoutItem('h (Fb/Fs)', h.toFixed(3)));
         readout.appendChild(readoutItem('α (Vas/Vb)', alpha.toFixed(3)));
-        const gains = ventedBoxResponseDb(freqs, { ...sealedParams, fbHz: project.fbHz });
+        const gains = ventedBoxResponseDb(freqs, ventedParams);
         responseChart.setData([Array.from(freqs), Array.from(gains)]);
+
+        const excursionParams = {
+          ...ventedParams,
+          blTm: project.blTm,
+          reOhm: project.reOhm,
+          sdM2: project.sdCm2 / 10000,
+          voltageV: project.voltageV,
+        };
+        const excursion = ventedBoxExcursionMm(freqs, excursionParams);
+        excursionChart.setData([Array.from(freqs), Array.from(excursion)]);
       } else {
         const { fcHz, qtc } = sealedBoxAlignment(sealedParams);
         readout.appendChild(readoutItem('Fc', fcHz.toFixed(1), 'Hz'));

@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { ventedBoxAlignment, ventedBoxResponseDb } from '../src/vented-box.js';
+import { ventedBoxAlignment, ventedBoxResponseDb, ventedBoxExcursionMm } from '../src/vented-box.js';
+import { sealedBoxExcursionMm } from '../src/sealed-box.js';
 import { logSpace } from '../src/diffraction.js';
 
 const driver = { fsHz: 30, qts: 0.35, vasL: 60 };
@@ -62,4 +63,61 @@ test('a high-Qts alignment peaks above 0 dB near Fb; the Butterworth one does no
   const freqs = logSpace(5, 500, 2000);
   const peakyMax = Math.max(...ventedBoxResponseDb(freqs, peaky));
   assert.ok(peakyMax > 1, `expected a peak above 0 dB, got max ${peakyMax} dB`);
+});
+
+// Excursion: no published closed-form was found (see the module comment), so
+// these tests check it against physical facts that must hold regardless of
+// the derivation's exact notation, rather than against a known-good number.
+
+const AIR_DENSITY_KG_M3 = 1.2;
+const SPEED_OF_SOUND_MPS = 343;
+const excursionDriver = { fsHz: 30, qts: 0.35, vasL: 60 };
+const excursionParams = { ...excursionDriver, vbL: 20, fbHz: 32, blTm: 7, reOhm: 6, sdM2: 0.02, voltageV: 2.83 };
+
+function mmsKgFor(driver) {
+  // Mas = 1 / (omegaS^2 * Cas), Mms = Mas * Sd^2 -- the standard mechanical/
+  // acoustic conversion, computed independently of the module under test.
+  const rhoC2 = AIR_DENSITY_KG_M3 * SPEED_OF_SOUND_MPS * SPEED_OF_SOUND_MPS;
+  const Cas = driver.vasL / 1000 / rhoC2;
+  const omegaS = 2 * Math.PI * driver.fsHz;
+  const Mas = 1 / (omegaS * omegaS * Cas);
+  return Mas * excursionParams.sdM2 * excursionParams.sdM2;
+}
+
+test('excursion converges to the sealed-box formula at high frequency (port effectively blocked)', () => {
+  const freqs = [500, 1000, 1900];
+  const vented = ventedBoxExcursionMm(freqs, excursionParams);
+  const sealed = sealedBoxExcursionMm(freqs, {
+    ...excursionDriver,
+    vbL: excursionParams.vbL,
+    blTm: excursionParams.blTm,
+    reOhm: excursionParams.reOhm,
+    mmsKg: mmsKgFor(excursionDriver),
+    voltageV: excursionParams.voltageV,
+  });
+  for (let i = 0; i < freqs.length; i++) {
+    assert.ok(
+      Math.abs(vented[i] / sealed[i] - 1) < 0.01,
+      `at ${freqs[i]} Hz expected vented (${vented[i]}) ~= sealed (${sealed[i]})`
+    );
+  }
+});
+
+test('excursion has a sharp local minimum exactly at Fb', () => {
+  const freqs = logSpace(20, 50, 300);
+  const excursion = ventedBoxExcursionMm(freqs, excursionParams);
+  let minIndex = 0;
+  for (let i = 1; i < excursion.length; i++) if (excursion[i] < excursion[minIndex]) minIndex = i;
+  assert.ok(Math.abs(freqs[minIndex] - excursionParams.fbHz) < 1, `expected the minimum near Fb, got ${freqs[minIndex]} Hz`);
+
+  const [atFb] = ventedBoxExcursionMm([excursionParams.fbHz], excursionParams);
+  const [justBelow] = ventedBoxExcursionMm([excursionParams.fbHz * 0.9], excursionParams);
+  const [justAbove] = ventedBoxExcursionMm([excursionParams.fbHz * 1.1], excursionParams);
+  assert.ok(atFb < justBelow / 5 && atFb < justAbove / 5, 'expected a sharp dip, not just a local dip');
+});
+
+test('excursion rises steeply below Fb (the port stops providing control)', () => {
+  const [atFb] = ventedBoxExcursionMm([excursionParams.fbHz], excursionParams);
+  const [wellBelow] = ventedBoxExcursionMm([excursionParams.fbHz / 4], excursionParams);
+  assert.ok(wellBelow > atFb * 10, `expected a steep rise below Fb, got ${wellBelow} vs dip ${atFb}`);
 });

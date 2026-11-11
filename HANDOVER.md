@@ -69,8 +69,11 @@ Start small and get one tool genuinely good before moving on.
 - **Baffle diffraction (item 1):** working. Vanderkooy edge-source model, validated with a
   `node:test` suite against known closed-form results, live chart, JSON project export/import.
 - **Box modeller (item 2):** sealed box is complete (response + cone excursion, both
-  validated). Vented box response is complete and validated, including a cross-check against
-  the standard 4th-order Butterworth filter coefficients independent of Small's own paper.
+  validated). Vented box is now complete too: response validated against the standard
+  4th-order Butterworth filter coefficients independent of Small's own paper, and cone
+  excursion (no published closed-form found, so validated instead against three physical
+  facts — converges exactly to the sealed-box excursion at high frequency, sharp minimum at
+  Fb, steep rise below Fb — see the module comment in `src/vented-box.js`).
   **Passive-radiator alignment: parked, not implemented.** From-scratch circuit derivation
   confirmed correct for the sealed-box case (matches the validated module to 0.0002 dB) and
   the PR's own component conversion is right (reproduces its 10.2 Hz datasheet resonance from
