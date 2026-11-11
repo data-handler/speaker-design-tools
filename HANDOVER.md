@@ -71,11 +71,16 @@ Start small and get one tool genuinely good before moving on.
 - **Box modeller (item 2):** sealed box is complete (response + cone excursion, both
   validated). Vented box response is complete and validated, including a cross-check against
   the standard 4th-order Butterworth filter coefficients independent of Small's own paper.
-  In progress: passive-radiator alignment. The PR's own component values (mass, compliance,
-  area) convert correctly and reproduce its datasheet free-air resonance from first
-  principles, but the full coupled driver+box+PR system doesn't yet reproduce Jeff's
-  published real-world result (48 L box tuning to Fb=17.1 Hz) — still tracking down whether
-  that's a modelling-convention gap (how "Fb" is defined for a PR system vs. a port) or the
-  disc-removal detail Jeff mentions in his write-up. Vented-box cone excursion also still
-  pending (separate transfer function from PR excursion, not yet derived/verified).
+  **Passive-radiator alignment: parked, not implemented.** From-scratch circuit derivation
+  confirmed correct for the sealed-box case (matches the validated module to 0.0002 dB) and
+  the PR's own component conversion is right (reproduces its 10.2 Hz datasheet resonance from
+  first principles), but the full coupled driver+box+PR system doesn't reproduce Jeff's
+  published real-world result (48 L box tuning to Fb=17.1 Hz, F3=36 Hz) — tried the natural
+  analogue of Small's sealed-box Fc formula (radiator mass against box+own compliance in
+  series) and landed close on Fb (15.75 Hz) but the predicted F3 was off by a wide margin
+  (~50 Hz vs. 36 Hz), so it's not just a close-enough approximation. The actual primary
+  source (R. Small, "Passive-Radiator Loudspeaker Systems" Parts 1 & 2, JAES 1974) is paywalled
+  in the AES E-Library and wasn't accessible. Revisit if/when the papers or a trustworthy full
+  reproduction of them turns up. Vented-box cone excursion also still pending (a separate,
+  not-yet-derived transfer function from the acoustic output one implemented above).
 - **Passive crossover simulation (item 3):** not started, per the stated plan.
