@@ -250,16 +250,16 @@ function App() {
   const root = el('div', [
     el('form', { onsubmit: (e) => e.preventDefault() }, [
       el('label', ['Project name', nameInput]),
-      el('label', ['Box type', boxTypeSelect]),
-      fieldsetsContainer,
-      errorBox,
-      readout,
       el('fieldset', [el('legend', 'Saved projects'), projectLibraryPanel.element]),
       el(
         'small.hint',
         'Saved automatically in this browser as you work. Export a project file to back it up, move it to another device, or share it — clearing this browser’s site data will otherwise lose it.'
       ),
       el('div.actions', [exportButton, importButton, importInput]),
+      el('label', ['Box type', boxTypeSelect]),
+      fieldsetsContainer,
+      errorBox,
+      readout,
     ]),
     el('div.chart-panel', [el('h2', 'On-axis response'), responseChartContainer]),
     excursionPanel,

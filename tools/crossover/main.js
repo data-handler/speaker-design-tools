@@ -826,16 +826,16 @@ function App() {
   const root = el('div', [
     el('form', { onsubmit: (e) => e.preventDefault() }, [
       el('label', ['Project name', nameInput]),
-      driversContainer,
-      el('div.actions', [addDriverButton]),
-      errorBox,
-      statusBox,
       el('fieldset', [el('legend', 'Saved projects'), projectLibraryPanel.element]),
       el(
         'small.hint',
         'Saved automatically in this browser as you work. Export a project file to back it up, move it to another device, or share it — clearing this browser’s site data will otherwise lose it.'
       ),
       el('div.actions', [exportButton, importButton, importInput]),
+      driversContainer,
+      el('div.actions', [addDriverButton]),
+      errorBox,
+      statusBox,
     ]),
     el('div.chart-panel', [el('h2', 'Driver and summed response'), chartContainer]),
     el('div.chart-panel', [el('h2', 'System off-axis & power response'), systemDirectivityStatus, systemDirectivityContainer]),

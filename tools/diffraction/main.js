@@ -287,9 +287,14 @@ function App() {
   const root = el('div', [
     el('form', { onsubmit: (e) => e.preventDefault() }, [
       el('label', ['Project name', nameInput]),
+      el('fieldset', [el('legend', 'Saved projects'), projectLibraryPanel.element]),
+      el(
+        'small.hint',
+        'Saved automatically in this browser as you work. Export a project file to back it up, move it to another device, or share it — clearing this browser’s site data will otherwise lose it.'
+      ),
+      el('div.actions', [exportButton, importButton, importInput]),
       ...fieldsets,
       errorBox,
-      el('fieldset', [el('legend', 'Saved projects'), projectLibraryPanel.element]),
     ]),
     el('div.chart-panel', [
       el('h2', 'Baffle layout'),
@@ -302,11 +307,6 @@ function App() {
       chartContainer,
       el('div.actions', [pinButton, clearPinButton, pinnedLabel]),
     ]),
-    el(
-      'small.hint',
-      'Saved automatically in this browser as you work. Export a project file to back it up, move it to another device, or share it — clearing this browser’s site data will otherwise lose it.'
-    ),
-    el('div.actions', [exportButton, importButton, importInput]),
   ]);
 
   mount(document.getElementById('app'), root);
