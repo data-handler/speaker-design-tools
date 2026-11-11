@@ -279,6 +279,8 @@ function App() {
     const orderSelect = el('select', [
       el('option', { value: '1' }, '1st order (6 dB/octave)'),
       el('option', { value: '2' }, '2nd order (12 dB/octave)'),
+      el('option', { value: '3' }, '3rd order (18 dB/octave)'),
+      el('option', { value: '4' }, '4th order (24 dB/octave)'),
     ]);
     const alignmentSelect = el('select', [
       el('option', { value: 'butterworth' }, 'Butterworth (Q=0.707)'),
@@ -287,6 +289,9 @@ function App() {
     const crossoverFreqInput = el('input', { type: 'number', min: 1, step: 'any', value: 2000 });
     const applyPresetButton = el('button.secondary', { type: 'button' }, 'Apply (replaces the network below)');
 
+    // Linkwitz-Riley is only offered at 2nd order - at 3rd/4th order it's
+    // Butterworth only (see the module-level comment in crossover-presets.js
+    // for why Linkwitz-Riley isn't offered there yet).
     function updateAlignmentEnabled() {
       alignmentSelect.disabled = orderSelect.value !== '2';
     }

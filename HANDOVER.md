@@ -101,15 +101,21 @@ Start small and get one tool genuinely good before moving on.
   identical pair cancels to silence, a one-period delay is equivalent to no delay). The UI
   shows each driver's own response plus the summed total on one chart, with v1 (single-driver)
   project files still opening via a migration. Each driver also has a "quick filter" helper
-  (`src/crossover-presets.js`) that fills in standard 1st- or 2nd-order (Butterworth or
-  Linkwitz-Riley) component values for a given crossover frequency, derived from the filter's
-  own transfer function rather than a published table (those are almost always for a
-  doubly-terminated filter, which a voltage-source-driven passive crossover is not) —
-  checked against the exact closed-form Butterworth response as before, and for
-  Linkwitz-Riley against its defining property (low-pass and high-pass are both exactly
-  -6.02dB at the crossover frequency, and sum to an exactly flat response at every frequency
-  once one driver's polarity is inverted — confirmed algebraically that this exact
-  cancellation is unique to Q=0.5 before relying on it as a test). Each driver can also take
+  (`src/crossover-presets.js`) that fills in standard 1st-, 2nd-, 3rd- or 4th-order component
+  values for a given crossover frequency, derived from the filter's own transfer function
+  rather than a published table (those are almost always for a doubly-terminated filter,
+  which a voltage-source-driven passive crossover is not). 2nd order offers Butterworth
+  (Q=0.707) or Linkwitz-Riley (Q=0.5); 3rd and 4th order are solved by matching the ladder's
+  ABCD-derived denominator polynomial term-by-term against the standard normalized
+  Butterworth polynomial for that order (Linkwitz-Riley isn't offered past 2nd order — it's
+  only defined at even orders as the square of a half-order Butterworth response, and
+  whether/how that's realizable as a single passive ladder hasn't been worked out). All
+  orders checked against the exact closed-form Butterworth response
+  (`1/(1+(f/fc)^(2*order))`) to floating-point precision, and Linkwitz-Riley additionally
+  against its defining property (low-pass and high-pass are both exactly -6.02dB at the
+  crossover frequency, and sum to an exactly flat response at every frequency once one
+  driver's polarity is inverted — confirmed algebraically that this exact cancellation is
+  unique to Q=0.5 before relying on it as a test). Each driver can also take
   off-axis measurements (any number of extra `.frd` files, each tagged with its angle) and
   shows its own family of angle responses plus an estimated power response
   (`src/directivity.js`) — a solid-angle-weighted energy average over the measured angles
@@ -118,7 +124,4 @@ Start small and get one tool genuinely good before moving on.
   hemisphere (0-90°) matters, so it's a directivity/early-reflections estimate, not a
   lab-grade full-sphere sound-power measurement. This is per-driver only so far — summing
   multiple drivers' off-axis families into a system-level off-axis/power response is still to
-  do, and needs a plan for driver angle grids that don't match (not yet attempted). Also still
-  to do: 3rd/4th-order presets (these need a correctly re-derived single-terminated ladder,
-  not just the published doubly-terminated tables, so are left for when there's time to do
-  that derivation carefully rather than shipping a plausible-looking guess).
+  do, and needs a plan for driver angle grids that don't match (not yet attempted).

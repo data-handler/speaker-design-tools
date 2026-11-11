@@ -107,6 +107,54 @@ test('2nd-order Butterworth does NOT have the flat-sum property (sanity check th
   assert.ok(Math.abs(complexMagnitude(summed) - 1) > 0.01);
 });
 
-test('throws on an unsupported order', () => {
-  assert.throws(() => presetComponents({ type: 'lowpass', order: 3, crossoverHz: FC_HZ, loadOhm: LOAD_OHM }));
+test('3rd-order Butterworth low-pass matches the exact 1/(1+(f/fc)^6) response', () => {
+  const components = presetComponents({ type: 'lowpass', order: 3, crossoverHz: FC_HZ, loadOhm: LOAD_OHM });
+  assert.equal(components.length, 3);
+  const freqs = logSpace(20, 20000, 200);
+  const db = dbAt(components, freqs);
+  for (let i = 0; i < freqs.length; i++) {
+    const expectedDb = 10 * Math.log10(1 / (1 + (freqs[i] / FC_HZ) ** 6));
+    assert.ok(Math.abs(db[i] - expectedDb) < 1e-9, `at ${freqs[i]} Hz: got ${db[i]}, expected ${expectedDb}`);
+  }
+});
+
+test('3rd-order Butterworth high-pass matches the exact (f/fc)^6/(1+(f/fc)^6) response', () => {
+  const components = presetComponents({ type: 'highpass', order: 3, crossoverHz: FC_HZ, loadOhm: LOAD_OHM });
+  assert.equal(components.length, 3);
+  const freqs = logSpace(20, 20000, 200);
+  const db = dbAt(components, freqs);
+  for (let i = 0; i < freqs.length; i++) {
+    const x6 = (freqs[i] / FC_HZ) ** 6;
+    const expectedDb = 10 * Math.log10(x6 / (1 + x6));
+    assert.ok(Math.abs(db[i] - expectedDb) < 1e-9, `at ${freqs[i]} Hz: got ${db[i]}, expected ${expectedDb}`);
+  }
+});
+
+test('4th-order Butterworth low-pass matches the exact 1/(1+(f/fc)^8) response', () => {
+  const components = presetComponents({ type: 'lowpass', order: 4, crossoverHz: FC_HZ, loadOhm: LOAD_OHM });
+  assert.equal(components.length, 4);
+  const freqs = logSpace(20, 20000, 200);
+  const db = dbAt(components, freqs);
+  for (let i = 0; i < freqs.length; i++) {
+    const expectedDb = 10 * Math.log10(1 / (1 + (freqs[i] / FC_HZ) ** 8));
+    assert.ok(Math.abs(db[i] - expectedDb) < 1e-9, `at ${freqs[i]} Hz: got ${db[i]}, expected ${expectedDb}`);
+  }
+});
+
+test('4th-order Butterworth high-pass matches the exact (f/fc)^8/(1+(f/fc)^8) response', () => {
+  const components = presetComponents({ type: 'highpass', order: 4, crossoverHz: FC_HZ, loadOhm: LOAD_OHM });
+  assert.equal(components.length, 4);
+  const freqs = logSpace(20, 20000, 200);
+  const db = dbAt(components, freqs);
+  for (let i = 0; i < freqs.length; i++) {
+    const x8 = (freqs[i] / FC_HZ) ** 8;
+    const expectedDb = 10 * Math.log10(x8 / (1 + x8));
+    assert.ok(Math.abs(db[i] - expectedDb) < 1e-9, `at ${freqs[i]} Hz: got ${db[i]}, expected ${expectedDb}`);
+  }
+});
+
+test('order and type still validate (unsupported order, unknown type)', () => {
+  assert.throws(() => presetComponents({ type: 'lowpass', order: 5, crossoverHz: FC_HZ, loadOhm: LOAD_OHM }));
+  assert.throws(() => presetComponents({ type: 'bandpass', order: 3, crossoverHz: FC_HZ, loadOhm: LOAD_OHM }));
+  assert.throws(() => presetComponents({ type: 'bandpass', order: 4, crossoverHz: FC_HZ, loadOhm: LOAD_OHM }));
 });
