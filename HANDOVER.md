@@ -74,7 +74,15 @@ Start small and get one tool genuinely good before moving on.
   invisible until a hard reload — reported directly by a user testing a deploy, reproduced
   and confirmed fixed with a scripted test before shipping (see the commit for a from-scratch
   repro: simulate an old cached shell, change the on-disk HTML without touching the service
-  worker, then check whether a normal in-app link navigation picks up the new content).
+  worker, then check whether a normal in-app link navigation picks up the new content). Still
+  wasn't enough on its own: browsers don't reliably re-check `service-worker.js` itself for
+  changes on every navigation (it's throttled, effectively up to 24h), so even with the HTML
+  fetch fixed, the JS/CSS a freshly-fetched page asks for could still come from an old,
+  still-active worker's cache - `src/register-sw.js` now calls `registration.update()` on
+  every page load and whenever the tab regains focus, forcing that check rather than waiting
+  for the browser's own schedule. Confirmed with a scripted repro too: deploy a new
+  `service-worker.js` on disk without reloading, then check that clicking between two in-app
+  pages (not a reload) picks it up.
 - **Saved-projects library:** localStorage rather than IndexedDB (`src/project-library.js`,
   shared UI in `src/project-library-panel.js`). This project already uses localStorage
   everywhere else with no prior IndexedDB code to build on, and the data (plain-text project
@@ -166,3 +174,13 @@ Start small and get one tool genuinely good before moving on.
   up). Fixed both by correcting the call order and by making `recompute()` itself skip a
   round when the chart's series count doesn't match the current driver count, rather than
   only patching the specific call sites that happened to be exercised by testing.
+  Placement and labelling were revised after direct feedback that the first version was
+  confusing: "Saved projects" sat between the editable fields and the charts (reported
+  separately and fixed first - see the layout commit), and even moved next to Project name it
+  still read as two competing, unexplained "naming" surfaces stacked on top of each other.
+  `src/project-library-panel.js` now opens with one line of copy explicitly tying it to the
+  name field above ("Save this design under its name above, or open one you've saved
+  before"), and the Save/Save as new/New actions (acting on what's open right now) are
+  visually separated from browsing *other* saved designs, which sits in its own
+  collapsed-by-default `<details>` section rather than competing for attention with the
+  current one.

@@ -24,6 +24,7 @@ export function createProjectLibraryPanel({ kind, getProjectName, getProjectData
   let openId = null; // the library entry currently loaded into the editor, if any
 
   const listContainer = el('div');
+  const listSummary = el('summary');
   const statusBox = el('small.hint');
   const saveButton = el('button.secondary', { type: 'button' });
   const saveAsNewButton = el('button.secondary', { type: 'button' }, 'Save as new');
@@ -39,8 +40,9 @@ export function createProjectLibraryPanel({ kind, getProjectName, getProjectData
 
   function renderList() {
     listContainer.textContent = '';
+    listSummary.textContent = records.length === 0 ? 'Saved designs (none yet)' : `Saved designs (${records.length})`;
     if (records.length === 0) {
-      listContainer.appendChild(el('p.hint', 'No saved projects yet — use Save to add this one.'));
+      listContainer.appendChild(el('p.hint', 'Nothing saved yet — use Save above to add this one.'));
       return;
     }
     for (const record of records) {
@@ -107,7 +109,17 @@ export function createProjectLibraryPanel({ kind, getProjectName, getProjectData
   renderList();
   updateSaveButton();
 
-  const element = el('div', [el('div.actions', [saveButton, saveAsNewButton, newButton]), statusBox, listContainer]);
+  // The save/open/new actions act directly on the project name field right
+  // above this panel - that's deliberately the visually prominent part.
+  // Browsing *other* saved designs is a separate, less frequent action, so
+  // it's tucked into its own collapsible section rather than competing with
+  // the current one for attention.
+  const element = el('div', [
+    el('p.hint', 'Save this design under its name above, or open one you’ve saved before.'),
+    el('div.actions', [saveButton, saveAsNewButton, newButton]),
+    statusBox,
+    el('details', [listSummary, listContainer]),
+  ]);
 
   return { element };
 }
