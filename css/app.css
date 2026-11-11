@@ -327,6 +327,46 @@ button.secondary:hover {
   margin: 0 0 0.75rem;
 }
 
+/* --- Baffle view: drag-to-position driver --- */
+
+.baffle-view {
+  width: 100%;
+  max-width: 22rem;
+  display: block;
+  background: var(--color-panel);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  touch-action: none; /* dragging owns touch gestures on the driver handle */
+}
+.baffle-view .baffle-outline {
+  fill: none;
+  stroke: var(--color-ink-muted);
+  stroke-width: 2;
+}
+.baffle-view .driver-handle {
+  fill: var(--color-panel);
+  stroke: var(--color-accent);
+  stroke-width: 2;
+  cursor: grab;
+}
+.baffle-view .driver-handle:active {
+  cursor: grabbing;
+}
+.baffle-view .driver-handle:focus-visible {
+  outline: 3px solid var(--color-accent);
+  outline-offset: 2px;
+}
+.baffle-view .driver-crosshair {
+  stroke: var(--color-accent);
+  stroke-width: 1;
+  opacity: 0.6;
+}
+.baffle-view-caption {
+  font-size: 0.8rem;
+  color: var(--color-ink-muted);
+  margin: 0.5rem 0 0;
+}
+
 footer {
   padding: 2rem 0;
   color: var(--color-ink-muted);

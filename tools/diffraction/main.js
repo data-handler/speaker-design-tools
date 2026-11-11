@@ -83,6 +83,95 @@ function computeCurve(project) {
   return [Array.from(freqs), Array.from(gainDb)];
 }
 
+const SVG_NS = 'http://www.w3.org/2000/svg';
+function svgEl(tag, attrs) {
+  const node = document.createElementNS(SVG_NS, tag);
+  for (const [key, value] of Object.entries(attrs ?? {})) node.setAttribute(key, value);
+  return node;
+}
+
+// A draggable top-down view of the baffle: lets you reposition the driver by
+// dragging, nudging with arrow keys, or typing in the numeric fields (both
+// directions stay in sync). viewBox is set to the baffle's own mm
+// dimensions, so SVG handles the pixel scaling and all the geometry below is
+// just plain millimetres.
+function createBaffleView({ onDrag }) {
+  const outline = svgEl('rect', { class: 'baffle-outline', x: 0, y: 0 });
+  const crosshairX = svgEl('line', { class: 'driver-crosshair' });
+  const crosshairY = svgEl('line', { class: 'driver-crosshair' });
+  const handle = svgEl('circle', { class: 'driver-handle', tabindex: '0', role: 'slider', 'aria-label': 'Driver position' });
+  const svg = svgEl('svg', { class: 'baffle-view' });
+  svg.append(outline, crosshairX, crosshairY, handle);
+
+  let widthMm = 1;
+  let heightMm = 1;
+  let radiusMm = 1;
+
+  function clientPointToMm(clientX, clientY) {
+    const rect = svg.getBoundingClientRect();
+    return {
+      x: ((clientX - rect.left) / rect.width) * widthMm,
+      y: ((clientY - rect.top) / rect.height) * heightMm,
+    };
+  }
+
+  function startDrag(pointerEvent) {
+    pointerEvent.preventDefault();
+    handle.setPointerCapture(pointerEvent.pointerId);
+    handle.focus();
+    const move = (e) => onDrag(clientPointToMm(e.clientX, e.clientY));
+    move(pointerEvent);
+    handle.addEventListener('pointermove', move);
+    handle.addEventListener(
+      'pointerup',
+      () => handle.removeEventListener('pointermove', move),
+      { once: true }
+    );
+  }
+  handle.addEventListener('pointerdown', startDrag);
+
+  handle.addEventListener('keydown', (e) => {
+    const step = e.shiftKey ? 5 : 1;
+    const deltas = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] };
+    const delta = deltas[e.key];
+    if (!delta) return;
+    e.preventDefault();
+    onDrag({ x: handle._mmX + delta[0], y: handle._mmY + delta[1] });
+  });
+
+  function update(project) {
+    widthMm = project.baffleWidthMm;
+    heightMm = project.baffleHeightMm;
+    radiusMm = project.driverDiameterMm / 2;
+    svg.setAttribute('viewBox', `0 0 ${widthMm} ${heightMm}`);
+    outline.setAttribute('width', widthMm);
+    outline.setAttribute('height', heightMm);
+
+    const x = project.driverOffsetXMm;
+    const y = project.driverOffsetYMm;
+    handle._mmX = x;
+    handle._mmY = y;
+    handle.setAttribute('cx', x);
+    handle.setAttribute('cy', y);
+    handle.setAttribute('r', radiusMm);
+    handle.setAttribute('aria-valuetext', `${x.toFixed(0)}mm from left, ${y.toFixed(0)}mm from top`);
+    crosshairX.setAttribute('x1', 0);
+    crosshairX.setAttribute('x2', widthMm);
+    crosshairX.setAttribute('y1', y);
+    crosshairX.setAttribute('y2', y);
+    crosshairY.setAttribute('x1', x);
+    crosshairY.setAttribute('x2', x);
+    crosshairY.setAttribute('y1', 0);
+    crosshairY.setAttribute('y2', heightMm);
+
+    const overlapsEdge = x - radiusMm < 0 || x + radiusMm > widthMm || y - radiusMm < 0 || y + radiusMm > heightMm;
+    handle.setAttribute('stroke-dasharray', overlapsEdge ? '3 2' : 'none');
+    return overlapsEdge;
+  }
+
+  return { element: svg, update };
+}
+
 function App() {
   let project = loadProject();
   const inputs = {};
@@ -104,9 +193,20 @@ function App() {
 
   const nameInput = el('input', { type: 'text', value: project.name, id: 'field-name' });
   const errorBox = el('p.error-text', { style: { display: 'none' } });
+  const edgeWarning = el('p.error-text', { style: { display: 'none' } }, 'The driver overlaps the baffle edge.');
 
   const chartContainer = el('div');
   let chart;
+  let pinnedLabel = el('span', 'No trace pinned');
+
+  const baffleView = createBaffleView({
+    onDrag: (mm) => {
+      const margin = project.driverDiameterMm / 2;
+      inputs.driverOffsetXMm.value = Math.max(margin, Math.min(project.baffleWidthMm - margin, mm.x)).toFixed(0);
+      inputs.driverOffsetYMm.value = Math.max(margin, Math.min(project.baffleHeightMm - margin, mm.y)).toFixed(0);
+      recompute();
+    },
+  });
 
   function recompute() {
     for (const { key, min } of FIELDS) {
@@ -123,8 +223,11 @@ function App() {
 
     saveProject(project);
     try {
-      const data = computeCurve(project);
-      chart.setData(data);
+      const [freqs, gains] = computeCurve(project);
+      const overlapsEdge = baffleView.update(project);
+      edgeWarning.style.display = overlapsEdge ? '' : 'none';
+      const pinned = chart.data[2] ?? freqs.map(() => null);
+      chart.setData([freqs, gains, pinned]);
     } catch (err) {
       errorBox.textContent = err.message;
       errorBox.style.display = '';
@@ -132,6 +235,19 @@ function App() {
   }
 
   nameInput.addEventListener('input', recompute);
+
+  const pinButton = el('button.secondary', { type: 'button' }, 'Pin this trace');
+  pinButton.addEventListener('click', () => {
+    const [freqs, gains] = chart.data;
+    chart.setData([freqs, gains, gains.slice()]);
+    pinnedLabel.textContent = `Pinned: ${project.name}`;
+  });
+  const clearPinButton = el('button.secondary', { type: 'button' }, 'Clear pinned trace');
+  clearPinButton.addEventListener('click', () => {
+    const [freqs, gains] = chart.data;
+    chart.setData([freqs, gains, freqs.map(() => null)]);
+    pinnedLabel.textContent = 'No trace pinned';
+  });
 
   const exportButton = el('button', { type: 'button' }, 'Export project (.json)');
   exportButton.addEventListener('click', () => downloadJson(project));
@@ -160,9 +276,19 @@ function App() {
       el('label', ['Project name', nameInput]),
       ...fieldsets,
       errorBox,
-      el('div.actions', [exportButton, importButton, importInput]),
     ]),
-    el('div.chart-panel', [el('h2', 'On-axis response'), chartContainer]),
+    el('div.chart-panel', [
+      el('h2', 'Baffle layout'),
+      baffleView.element,
+      el('p.baffle-view-caption', 'Drag the driver to reposition it, or use arrow keys (hold Shift to move faster) once it has focus.'),
+      edgeWarning,
+    ]),
+    el('div.chart-panel', [
+      el('h2', 'On-axis response'),
+      chartContainer,
+      el('div.actions', [pinButton, clearPinButton, pinnedLabel]),
+    ]),
+    el('div.actions', [exportButton, importButton, importInput]),
   ]);
 
   mount(document.getElementById('app'), root);
@@ -188,9 +314,13 @@ function App() {
           font: `12px ${theme.fontSans}`,
         },
       ],
-      series: [{}, { label: 'On-axis response', stroke: theme.accent, width: 2 }],
+      series: [
+        {},
+        { label: 'On-axis response', stroke: theme.accent, width: 2 },
+        { label: 'Pinned', stroke: theme.inkMuted, width: 1, dash: [4, 3] },
+      ],
     },
-    [[1, 2], [0, 0]],
+    [[1, 2], [0, 0], [null, null]],
     chartContainer
   );
   new ResizeObserver(([entry]) => chart.setSize({ width: entry.contentRect.width, height: 360 })).observe(

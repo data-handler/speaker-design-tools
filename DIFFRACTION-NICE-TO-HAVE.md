@@ -2,16 +2,14 @@
 
 Not core requirements. Build the core graph and polar views first, then consider these.
 
-## 1. Drag-to-position drivers
+## 1. Drag-to-position drivers — done
 
-Let users drag each driver on the baffle and watch the response update live. Existing tools (VituixCAD, The Edge) need typed coordinates and a re-run, so this is a genuine step up.
+Implemented: drag the driver on an SVG top-down baffle view (pointer events, so mouse/touch/pen all work the same way) with the response updating live on every move. The numeric X/Y fields stay in sync both ways, arrow keys nudge by 1mm (5mm with Shift) once the driver has focus, and a dashed outline plus warning text appears if the driver overlaps the baffle edge. A "pin this trace" button overlays the current curve as a faint dashed comparison trace so you can see whether a move helped.
 
-- **Live updates while dragging.** The edge-source model is cheap (a few hundred edge points × a couple of hundred frequencies), so it should run smoothly in JavaScript, even on a phone. Throttle to animation frames if needed.
-- **Precision alongside dragging.** Show X/Y position in mm next to the baffle, directly editable, with arrow-key nudging and optional snap-to-grid. Dragging is for exploring; typed values are for final numbers.
-- **Comparison.** Keep a faint "pinned" or "previous" trace on the graph so users can see whether a move improved things.
-- **Real-world constraints.** Draw each driver's actual outline from its diameter. Warn on overlap with edges, roundovers or other drivers.
-- **Per-driver views.** Tweeter and woofer each get their own diffraction curve, since they're affected in different frequency ranges.
-- **Touch support** for mobile and tablet.
+Not done (still genuinely future, not just unticked):
+- **Snap-to-grid.** Mentioned in the original idea; skipped for now since free dragging plus the numeric fields covers precision adequately.
+- **Per-driver views / multiple drivers.** The tool only models a single driver on a baffle right now; multi-driver support (tweeter + woofer each with their own curve) would be a bigger scope change, not a drag-and-drop addition.
+- **Roundover-aware overlap warnings.** No roundover modelling exists yet (flat baffles only), so there's nothing to warn about there.
 
 ## 2. "Explain this" visualisation
 
