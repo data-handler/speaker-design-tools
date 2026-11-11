@@ -1,2 +1,6 @@
 .DS_Store
 *.log
+
+# Reference material (manufacturer datasheets, Jeff Bagby's write-up): kept
+# locally for validation, not redistributed from this public repo.
+*.pdf

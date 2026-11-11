@@ -41,7 +41,8 @@ Start small and get one tool genuinely good before moving on.
 ## Context
 
 - diyAudio thread (Software Tools subforum) asking whether the tools would be useful got positive replies.
-- My own builds include Jeff's Kairos with his bass modules, so test cases using sealed and passive-radiator designs are directly useful to me.
+- My own builds include Jeff's Kairos with his bass modules, so test cases using sealed and passive-radiator designs are directly useful to me. Driver + passive radiator datasheets (SB29SWNRX-S75-6, SB29NRX-00) and Jeff's own Kairos/Continuum write-up (with published Vb=48L sealed/vented/PR results to validate against) are in the repo root.
+- See also `DIFFRACTION-NICE-TO-HAVE.md` (diffraction tool extras) and `ROADMAP-IDEAS.md` (workflow wizard, cabinet designer — post-MVP ideas).
 
 ## Decisions
 
@@ -50,30 +51,31 @@ Start small and get one tool genuinely good before moving on.
   `audiomission.co.uk` site (github.com/data-handler/audio-mission) is a hand-written static
   HTML site with no build step, also on GitHub Pages — keeping this repo separate decouples
   the growing JS app (service worker, IndexedDB, vendored libs) from that hand-edited content.
-- **Charting:** [uPlot](https://github.com/leeoniya/uPlot) once a tool needs charts — tiny,
-  canvas-based, built for log-frequency-axis multi-trace plots. The justified library exception.
+- **Charting:** [uPlot](https://github.com/leeoniya/uPlot) — tiny, canvas-based, built for
+  log-frequency-axis multi-trace plots. The justified library exception.
 - **Project file format:** JSON with a top-level `schemaVersion` (independent of app version)
-  and a `kind` discriminator (e.g. `"diffraction"`, `"sealed-box"`). Add a migration function
-  per tool whenever the schema changes; never delete an old migration step.
+  and a `kind` discriminator (e.g. `"diffraction"`, `"box"`). Add a migration function per tool
+  whenever the schema changes; never delete an old migration step.
 - **License:** MIT, matching the main site.
-- **Styling:** dropped Pico CSS (originally listed under Stack and code
-  style above) in favour of a small hand-written design system
-  (`css/app.css`) once the UI needed to carry real information density
-  (grouped Thiele-Small inputs, inline help, a computed-result readout) that
-  a generic component library wasn't shaped for. Palette and type are drawn
-  from the hardware itself (plywood, brass terminals, meter dials) rather
-  than a generic theme; self-hosted JetBrains Mono + Public Sans.
+- **Styling:** dropped Pico CSS (originally listed under Stack and code style above) in favour
+  of a small hand-written design system (`css/app.css`) once the UI needed to carry real
+  information density (grouped Thiele-Small inputs, inline help, a computed-result readout)
+  that a generic component library wasn't shaped for. Palette and type are drawn from the
+  hardware itself (plywood, brass terminals, meter dials) rather than a generic theme;
+  self-hosted JetBrains Mono + Public Sans.
 
 ## Progress
 
-- **Baffle diffraction (item 1):** working. Vanderkooy edge-source model,
-  validated with a `node:test` suite against known closed-form results, live
-  chart, JSON project export/import.
-- **Box modeller (item 2):** sealed box is complete (response + cone
-  excursion, both validated). Vented box response is complete and validated
-  (including a cross-check against the standard 4th-order Butterworth filter
-  coefficients, independent of Small's own paper). Still to do: vented-box
-  cone excursion (needs its own transfer function, not yet derived/verified
-  with enough confidence to ship), and passive-radiator alignment (not
-  started).
+- **Baffle diffraction (item 1):** working. Vanderkooy edge-source model, validated with a
+  `node:test` suite against known closed-form results, live chart, JSON project export/import.
+- **Box modeller (item 2):** sealed box is complete (response + cone excursion, both
+  validated). Vented box response is complete and validated, including a cross-check against
+  the standard 4th-order Butterworth filter coefficients independent of Small's own paper.
+  In progress: passive-radiator alignment. The PR's own component values (mass, compliance,
+  area) convert correctly and reproduce its datasheet free-air resonance from first
+  principles, but the full coupled driver+box+PR system doesn't yet reproduce Jeff's
+  published real-world result (48 L box tuning to Fb=17.1 Hz) — still tracking down whether
+  that's a modelling-convention gap (how "Fb" is defined for a PR system vs. a port) or the
+  disc-removal detail Jeff mentions in his write-up. Vented-box cone excursion also still
+  pending (separate transfer function from PR excursion, not yet derived/verified).
 - **Passive crossover simulation (item 3):** not started, per the stated plan.
