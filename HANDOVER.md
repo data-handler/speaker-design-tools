@@ -100,5 +100,16 @@ Start small and get one tool genuinely good before moving on.
   validated against known facts (two in-phase identical sources sum to +6.02 dB, an inverted
   identical pair cancels to silence, a one-period delay is equivalent to no delay). The UI
   shows each driver's own response plus the summed total on one chart, with v1 (single-driver)
-  project files still opening via a migration. Still to do: off-axis/power response, and a
-  friendlier way to build common filter orders/topologies than entering components one by one.
+  project files still opening via a migration. Each driver also has a "quick filter" helper
+  (`src/crossover-presets.js`) that fills in standard 1st- or 2nd-order (Butterworth or
+  Linkwitz-Riley) component values for a given crossover frequency, derived from the filter's
+  own transfer function rather than a published table (those are almost always for a
+  doubly-terminated filter, which a voltage-source-driven passive crossover is not) —
+  checked against the exact closed-form Butterworth response as before, and for
+  Linkwitz-Riley against its defining property (low-pass and high-pass are both exactly
+  -6.02dB at the crossover frequency, and sum to an exactly flat response at every frequency
+  once one driver's polarity is inverted — confirmed algebraically that this exact
+  cancellation is unique to Q=0.5 before relying on it as a test). Still to do: off-axis/power
+  response, and 3rd/4th-order presets (these need a correctly re-derived single-terminated
+  ladder, not just the published doubly-terminated tables, so are left for when there's time
+  to do that derivation carefully rather than shipping a plausible-looking guess).

@@ -6,6 +6,7 @@ import { resampleMagnitudePhase } from '../../src/resample.js';
 import { networkTransferFunction } from '../../src/crossover-network.js';
 import { complexMul, complexMagnitude, fromPolar, fromPolarDb, real } from '../../src/complex.js';
 import { applyLevelDelayPolarity, sumResponses, distanceMmToDelayMs } from '../../src/driver-combine.js';
+import { presetComponents } from '../../src/crossover-presets.js';
 import { chartTheme } from '../../src/chart-theme.js';
 
 const SCHEMA_VERSION = 2;
@@ -20,6 +21,17 @@ const UNIT = {
   capacitor: { label: 'µF', toSi: (v) => v / 1e6, fromSi: (v) => v * 1e6 },
 };
 const COMMON_FREQS = logSpace(20, 20000, 400);
+
+// Quick-filter values come out of exact floating-point maths; round them to
+// a sane number of significant figures before showing them - a real build
+// rounds to the nearest stocked part anyway, and 15 digits of precision on
+// a textbook starting value is just noise.
+function roundToSignificantFigures(value, figures) {
+  if (value === 0) return 0;
+  const magnitude = Math.ceil(Math.log10(Math.abs(value)));
+  const factor = 10 ** (figures - magnitude);
+  return Math.round(value * factor) / factor;
+}
 
 function defaultDriver(name) {
   return {
@@ -160,7 +172,7 @@ function App() {
   const chartContainer = el('div');
   let chart;
 
-  function componentsEditor(driver, onChange) {
+  function networkEditor(driver, onChange) {
     const container = el('div');
 
     function renderComponents() {
@@ -215,8 +227,57 @@ function App() {
       onChange();
     });
 
+    // Quick filter: calculates standard textbook component values for a
+    // single filter section and replaces the list below with them, as a
+    // starting point to fine-tune against the real (not purely resistive)
+    // measured response - not a substitute for the chart above.
+    const filterTypeSelect = el('select', [el('option', { value: 'lowpass' }, 'Low-pass'), el('option', { value: 'highpass' }, 'High-pass')]);
+    const orderSelect = el('select', [
+      el('option', { value: '1' }, '1st order (6 dB/octave)'),
+      el('option', { value: '2' }, '2nd order (12 dB/octave)'),
+    ]);
+    const alignmentSelect = el('select', [
+      el('option', { value: 'butterworth' }, 'Butterworth (Q=0.707)'),
+      el('option', { value: 'linkwitz-riley' }, 'Linkwitz-Riley (Q=0.5)'),
+    ]);
+    const crossoverFreqInput = el('input', { type: 'number', min: 1, step: 'any', value: 2000 });
+    const applyPresetButton = el('button.secondary', { type: 'button' }, 'Apply (replaces the network below)');
+
+    function updateAlignmentEnabled() {
+      alignmentSelect.disabled = orderSelect.value !== '2';
+    }
+    orderSelect.addEventListener('change', updateAlignmentEnabled);
+    updateAlignmentEnabled();
+
+    applyPresetButton.addEventListener('click', () => {
+      const components = presetComponents({
+        type: filterTypeSelect.value,
+        order: Number(orderSelect.value),
+        alignment: alignmentSelect.value,
+        crossoverHz: Number(crossoverFreqInput.value),
+        loadOhm: driver.nominalImpedanceOhm,
+      });
+      driver.components = components.map((c) => ({ ...c, value: roundToSignificantFigures(c.value, 3) }));
+      renderComponents();
+      onChange();
+    });
+
+    const quickFilter = el('div', { style: { marginBottom: '1.25rem' } }, [
+      el('div.field-grid', { style: { alignItems: 'end' } }, [
+        el('label', ['Quick filter: type', filterTypeSelect]),
+        el('label', ['Order', orderSelect]),
+        el('label', ['Alignment', alignmentSelect]),
+        el('label', ['Crossover frequency (Hz)', crossoverFreqInput]),
+        el('label', [' ', applyPresetButton]),
+      ]),
+      el(
+        'small.hint',
+        'Calculates standard component values assuming the nominal impedance above as a resistive load - a starting point, not a substitute for checking the chart against the real (imported) response.'
+      ),
+    ]);
+
     renderComponents();
-    return el('div', [container, el('div.actions', [addComponentButton])]);
+    return el('div', [quickFilter, container, el('div.actions', [addComponentButton])]);
   }
 
   function driverCard(driver, index, seriesColor) {
@@ -308,10 +369,14 @@ function App() {
         el('div.field-grid', [
           el('label', ['Response (.frd)', frdInput, frdStatus]),
           el('label', ['Impedance (.zma, optional)', zmaInput, zmaStatus]),
-          el('label', ['Fallback nominal impedance (Ω)', nominalImpedanceInput, el('small.hint', 'Used only when no .zma is imported')]),
+          el('label', [
+            'Nominal impedance (Ω)',
+            nominalImpedanceInput,
+            el('small.hint', 'Used as a flat fallback when no .zma is imported, and as the assumed load for quick-filter component calculations'),
+          ]),
         ]),
       ]),
-      el('fieldset', [el('legend', 'Crossover network (source side to driver side)'), componentsEditor(driver, recompute)]),
+      el('fieldset', [el('legend', 'Crossover network (source side to driver side)'), networkEditor(driver, recompute)]),
       el('fieldset', [
         el('legend', 'Level & acoustic alignment'),
         el('div.field-grid', [
