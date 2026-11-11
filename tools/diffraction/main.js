@@ -2,6 +2,7 @@ import { el, mount } from '../../vendor/redom/redom.es.min.js';
 import uPlot from '../../vendor/uplot/uPlot.esm.js';
 import { baffleDiffractionDb, logSpace } from '../../src/diffraction.js';
 import { chartTheme } from '../../src/chart-theme.js';
+import { createProjectLibraryPanel } from '../../src/project-library-panel.js';
 
 const SCHEMA_VERSION = 1;
 const KIND = 'diffraction';
@@ -252,6 +253,13 @@ function App() {
   const exportButton = el('button', { type: 'button' }, 'Export project (.json)');
   exportButton.addEventListener('click', () => downloadJson(project));
 
+  function applyProject(parsed) {
+    project = { ...DEFAULT_PROJECT, ...parsed };
+    nameInput.value = project.name;
+    for (const { key } of FIELDS) inputs[key].value = project[key];
+    recompute();
+  }
+
   const importInput = el('input', { type: 'file', accept: 'application/json', style: { display: 'none' } });
   importInput.addEventListener('change', async () => {
     const file = importInput.files[0];
@@ -259,10 +267,7 @@ function App() {
     try {
       const parsed = JSON.parse(await file.text());
       if (parsed.kind !== KIND) throw new Error(`Expected kind "${KIND}", got "${parsed.kind}"`);
-      project = { ...DEFAULT_PROJECT, ...parsed };
-      nameInput.value = project.name;
-      for (const { key } of FIELDS) inputs[key].value = project[key];
-      recompute();
+      applyProject(parsed);
     } catch (err) {
       errorBox.textContent = `Could not load project: ${err.message}`;
       errorBox.style.display = '';
@@ -271,11 +276,20 @@ function App() {
   const importButton = el('button.secondary', { type: 'button' }, 'Import project…');
   importButton.addEventListener('click', () => importInput.click());
 
+  const projectLibraryPanel = createProjectLibraryPanel({
+    kind: KIND,
+    getProjectName: () => project.name,
+    getProjectData: () => project,
+    applyProjectData: applyProject,
+    defaultProjectData: DEFAULT_PROJECT,
+  });
+
   const root = el('div', [
     el('form', { onsubmit: (e) => e.preventDefault() }, [
       el('label', ['Project name', nameInput]),
       ...fieldsets,
       errorBox,
+      el('fieldset', [el('legend', 'Saved projects'), projectLibraryPanel.element]),
     ]),
     el('div.chart-panel', [
       el('h2', 'Baffle layout'),

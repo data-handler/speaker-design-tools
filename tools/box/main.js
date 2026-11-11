@@ -4,6 +4,7 @@ import { logSpace } from '../../src/diffraction.js';
 import { sealedBoxAlignment, sealedBoxResponseDb, sealedBoxExcursionMm } from '../../src/sealed-box.js';
 import { ventedBoxAlignment, ventedBoxResponseDb, ventedBoxExcursionMm } from '../../src/vented-box.js';
 import { chartTheme } from '../../src/chart-theme.js';
+import { createProjectLibraryPanel } from '../../src/project-library-panel.js';
 
 const SCHEMA_VERSION = 1;
 const KIND = 'box';
@@ -213,6 +214,15 @@ function App() {
   const exportButton = el('button', { type: 'button' }, 'Export project (.json)');
   exportButton.addEventListener('click', () => downloadJson(project));
 
+  function applyProject(parsed) {
+    project = { ...DEFAULT_PROJECT, ...parsed };
+    nameInput.value = project.name;
+    boxTypeSelect.value = project.boxType;
+    rebuildFields();
+    for (const { fields } of fieldGroups(project)) for (const { key } of fields) inputs[key].value = project[key];
+    recompute();
+  }
+
   const importInput = el('input', { type: 'file', accept: 'application/json', style: { display: 'none' } });
   importInput.addEventListener('change', async () => {
     const file = importInput.files[0];
@@ -220,12 +230,7 @@ function App() {
     try {
       const parsed = JSON.parse(await file.text());
       if (parsed.kind !== KIND) throw new Error(`Expected kind "${KIND}", got "${parsed.kind}"`);
-      project = { ...DEFAULT_PROJECT, ...parsed };
-      nameInput.value = project.name;
-      boxTypeSelect.value = project.boxType;
-      rebuildFields();
-      for (const { fields } of fieldGroups(project)) for (const { key } of fields) inputs[key].value = project[key];
-      recompute();
+      applyProject(parsed);
     } catch (err) {
       errorBox.textContent = `Could not load project: ${err.message}`;
       errorBox.style.display = '';
@@ -234,6 +239,14 @@ function App() {
   const importButton = el('button.secondary', { type: 'button' }, 'Import project…');
   importButton.addEventListener('click', () => importInput.click());
 
+  const projectLibraryPanel = createProjectLibraryPanel({
+    kind: KIND,
+    getProjectName: () => project.name,
+    getProjectData: () => project,
+    applyProjectData: applyProject,
+    defaultProjectData: DEFAULT_PROJECT,
+  });
+
   const root = el('div', [
     el('form', { onsubmit: (e) => e.preventDefault() }, [
       el('label', ['Project name', nameInput]),
@@ -241,6 +254,7 @@ function App() {
       fieldsetsContainer,
       errorBox,
       readout,
+      el('fieldset', [el('legend', 'Saved projects'), projectLibraryPanel.element]),
       el(
         'small.hint',
         'Saved automatically in this browser as you work. Export a project file to back it up, move it to another device, or share it — clearing this browser’s site data will otherwise lose it.'

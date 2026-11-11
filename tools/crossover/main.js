@@ -9,6 +9,7 @@ import { applyLevelDelayPolarity, sumResponses, distanceMmToDelayMs } from '../.
 import { presetComponents } from '../../src/crossover-presets.js';
 import { powerResponseDb, nearestAngleIndex } from '../../src/directivity.js';
 import { chartTheme } from '../../src/chart-theme.js';
+import { createProjectLibraryPanel } from '../../src/project-library-panel.js';
 
 const SCHEMA_VERSION = 2;
 const KIND = 'crossover';
@@ -605,8 +606,8 @@ function App() {
     removeButton.addEventListener('click', () => {
       const atIndex = project.drivers.indexOf(driver);
       if (atIndex !== -1) project.drivers.splice(atIndex, 1);
-      renderDrivers();
       rebuildChart();
+      renderDrivers();
       recompute();
     });
     nominalImpedanceInput.addEventListener('input', () => {
@@ -696,8 +697,11 @@ function App() {
   const addDriverButton = el('button.secondary', { type: 'button' }, 'Add a driver');
   addDriverButton.addEventListener('click', () => {
     project.drivers.push(defaultDriver(`Driver ${project.drivers.length + 1}`));
-    renderDrivers();
+    // rebuildChart() before renderDrivers(): each driver card's directivityEditor
+    // calls the global recompute() once at construction, so the chart needs to
+    // already match the new driver count before renderDrivers() runs, not after.
     rebuildChart();
+    renderDrivers();
     recompute();
   });
 
@@ -745,6 +749,14 @@ function App() {
     // the saving and system-chart refresh above don't need it, and
     // rebuildChart() + recompute() right after will populate this part.
     if (!chart) return;
+    // Likewise, if something changed the number of drivers and renderDrivers()
+    // happened to run before rebuildChart() resized the chart's own series to
+    // match (each driver card's directivityEditor calls this function once at
+    // construction time, so renderDrivers() alone can trigger a premature
+    // recompute()), skip this round rather than feed uPlot a data array whose
+    // length doesn't match its series config - the rebuildChart() that always
+    // follows a driver-count change fixes this up immediately after anyway.
+    if (chart.series.length !== project.drivers.length + 2) return;
 
     const curves = computeProjectCurves(project);
     if (!curves) {
@@ -774,19 +786,27 @@ function App() {
   const exportButton = el('button', { type: 'button' }, 'Export project (.json)');
   exportButton.addEventListener('click', () => downloadJson(project));
 
+  function applyProject(parsed) {
+    project = { ...structuredClone(DEFAULT_PROJECT), ...migrateProject(parsed) };
+    project.drivers = project.drivers.map(normalizeDriver);
+    nameInput.value = project.name;
+    // rebuildChart() before renderDrivers(): see the comment on addDriverButton
+    // above - the incoming project can have a different driver count, and
+    // each driver card's directivityEditor calls recompute() once at
+    // construction time.
+    rebuildChart();
+    renderDrivers();
+    recompute();
+  }
+
   const importInput = el('input', { type: 'file', accept: 'application/json', style: { display: 'none' } });
   importInput.addEventListener('change', async () => {
     const file = importInput.files[0];
     if (!file) return;
     try {
-      const parsed = migrateProject(JSON.parse(await file.text()));
+      const parsed = JSON.parse(await file.text());
       if (parsed.kind !== KIND) throw new Error(`Expected kind "${KIND}", got "${parsed.kind}"`);
-      project = { ...structuredClone(DEFAULT_PROJECT), ...parsed };
-      project.drivers = project.drivers.map(normalizeDriver);
-      nameInput.value = project.name;
-      renderDrivers();
-      rebuildChart();
-      recompute();
+      applyProject(parsed);
     } catch (err) {
       errorBox.textContent = `Could not load project: ${err.message}`;
       errorBox.style.display = '';
@@ -795,6 +815,14 @@ function App() {
   const importButton = el('button.secondary', { type: 'button' }, 'Import project…');
   importButton.addEventListener('click', () => importInput.click());
 
+  const projectLibraryPanel = createProjectLibraryPanel({
+    kind: KIND,
+    getProjectName: () => project.name,
+    getProjectData: () => project,
+    applyProjectData: applyProject,
+    defaultProjectData: DEFAULT_PROJECT,
+  });
+
   const root = el('div', [
     el('form', { onsubmit: (e) => e.preventDefault() }, [
       el('label', ['Project name', nameInput]),
@@ -802,6 +830,7 @@ function App() {
       el('div.actions', [addDriverButton]),
       errorBox,
       statusBox,
+      el('fieldset', [el('legend', 'Saved projects'), projectLibraryPanel.element]),
       el(
         'small.hint',
         'Saved automatically in this browser as you work. Export a project file to back it up, move it to another device, or share it — clearing this browser’s site data will otherwise lose it.'

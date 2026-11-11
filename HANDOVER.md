@@ -25,7 +25,10 @@ Start small and get one tool genuinely good before moving on.
 
 - **Fully client-side.** All calculation in the browser. No server, no uploads, no accounts.
 - **PWA** (suggested by a diyAudio member): installable, works offline via a service worker caching the app shell.
-- **Local storage of projects** in IndexedDB.
+- **Local storage of projects.** Originally specced as IndexedDB; built as a localStorage-based
+  named-project library instead (see Decisions below) once it became clear a single autosave
+  slot plus file export wasn't actually meeting this - a user testing the deployed site pointed
+  out it was effectively one-shot per tool.
 - **File import/export:** .frd/.zma measurement files, plus a project file format (JSON) so people can back up, share and move designs between devices.
 - **Works on any OS**, desktop and mobile, light and dark mode.
 - **Validation:** check results against known-good tools (VituixCAD, WinPCD, Basta!) and published examples. Accuracy matters more than features; this audience will check.
@@ -72,6 +75,14 @@ Start small and get one tool genuinely good before moving on.
   and confirmed fixed with a scripted test before shipping (see the commit for a from-scratch
   repro: simulate an old cached shell, change the on-disk HTML without touching the service
   worker, then check whether a normal in-app link navigation picks up the new content).
+- **Saved-projects library:** localStorage rather than IndexedDB (`src/project-library.js`,
+  shared UI in `src/project-library-panel.js`). This project already uses localStorage
+  everywhere else with no prior IndexedDB code to build on, and the data (plain-text project
+  JSON, including any embedded `.frd`/`.zma` measurement text) is nowhere near localStorage's
+  several-MB-per-origin ceiling even with a sizeable library — IndexedDB's async, transactional
+  API is more surface area to get right for a feature whose whole point is not losing someone's
+  work. Sits on top of each tool's existing single-slot autosave (kept as-is, as the safety net
+  that restores in-progress work on reopening a tab) rather than replacing it.
 
 ## Progress
 
@@ -142,3 +153,16 @@ Start small and get one tool genuinely good before moving on.
   multi-driver summing and filter presets are all in now, at the level of rigour this project
   asks for; further polish (more alignments, interpolation instead of nearest-angle, etc.)
   can be revisited with real-world use.
+- **Saved-projects library:** all three tools now have a proper Save / Save as new /
+  Open ("Revert to saved" when the opened entry is already current) / Delete / New flow
+  against a named-project library (see Decisions above), not just the one autosave slot
+  each tool already had. Caught and fixed, via testing a driver-count-changing "revert",
+  a real latent bug in the crossover tool predating this feature: `renderDrivers()` and
+  `rebuildChart()` were called in the wrong order in three places (add driver, remove driver,
+  apply an imported/reverted project) — a driver card's directivityEditor triggers the global
+  `recompute()` once at construction, so if the driver count had already changed but the
+  chart's own series config hadn't been rebuilt yet, a crash was possible (reliably so when
+  the driver count went down, silently wrong - self-corrected a moment later - when it went
+  up). Fixed both by correcting the call order and by making `recompute()` itself skip a
+  round when the chart's series count doesn't match the current driver count, rather than
+  only patching the specific call sites that happened to be exercised by testing.
