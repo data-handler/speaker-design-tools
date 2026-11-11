@@ -122,6 +122,14 @@ Start small and get one tool genuinely good before moving on.
   (weights from the standard spherical-zone area formula, not a naive equal- or
   sin(theta)-per-point average), assuming the driver is axisymmetric and that only the front
   hemisphere (0-90°) matters, so it's a directivity/early-reflections estimate, not a
-  lab-grade full-sphere sound-power measurement. This is per-driver only so far — summing
-  multiple drivers' off-axis families into a system-level off-axis/power response is still to
-  do, and needs a plan for driver angle grids that don't match (not yet attempted).
+  lab-grade full-sphere sound-power measurement. There's also a system-level version that
+  combines every contributing driver's off-axis family into one chart, even when drivers
+  weren't measured at the same angles: the target angle set is the union of every driver's
+  own angles, and at each one a driver that wasn't measured there stands in its own nearest
+  measured angle instead of being interpolated (`nearestAngleIndex` — chosen over
+  interpolating the complex response, which risks distorting phase near a directivity null);
+  a driver with no off-axis measurements at all is assumed not to change with angle. This
+  closes out the crossover simulator's scope from item 3 above — off-axis/power response,
+  multi-driver summing and filter presets are all in now, at the level of rigour this project
+  asks for; further polish (more alignments, interpolation instead of nearest-angle, etc.)
+  can be revisited with real-world use.

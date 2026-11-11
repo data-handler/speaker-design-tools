@@ -7,7 +7,7 @@ import { networkTransferFunction } from '../../src/crossover-network.js';
 import { complexMul, complexMagnitude, fromPolar, fromPolarDb, real } from '../../src/complex.js';
 import { applyLevelDelayPolarity, sumResponses, distanceMmToDelayMs } from '../../src/driver-combine.js';
 import { presetComponents } from '../../src/crossover-presets.js';
-import { powerResponseDb } from '../../src/directivity.js';
+import { powerResponseDb, nearestAngleIndex } from '../../src/directivity.js';
 import { chartTheme } from '../../src/chart-theme.js';
 
 const SCHEMA_VERSION = 2;
@@ -162,25 +162,71 @@ function computeDriverContribution(driver) {
   return computeFilteredResponse(driver, driver.frdText);
 }
 
-// This driver's own directivity: its filtered response at 0 degrees (its
-// main .frd) plus each off-axis angle that has a measurement loaded, sorted
-// by angle, plus the estimated power response across them. Returns null if
-// there are no off-axis measurements loaded yet (directivity needs at least
-// one to say anything a plain on-axis chart doesn't already show).
-function computeDriverDirectivity(driver) {
+// This driver's filtered (complex) response at every angle it has a
+// measurement for: 0 degrees (its main .frd) always, plus whichever
+// off-axis angles have a measurement loaded, sorted ascending. Returns null
+// only if there's no on-axis measurement at all (nothing to compute from).
+// A driver with no off-axis measurements still gets a result - just a
+// single angle (0) - so callers that combine several drivers (like
+// computeSystemDirectivity below) don't need a separate case for "this
+// driver's directivity isn't known": nearestAngleIndex naturally resolves
+// to that single on-axis response at every angle, which is exactly the
+// right stand-in assumption (unknown directivity -> treat as not changing
+// with angle) without being told to.
+function computeDriverAngleResponses(driver) {
+  if (!driver.frdText) return null;
   const offAxisWithData = driver.offAxis.filter((m) => m.frdText);
-  if (!driver.frdText || offAxisWithData.length === 0) return null;
-
   const anglesDeg = [0, ...offAxisWithData.map((m) => m.angleDeg)];
   const order = anglesDeg.map((_, i) => i).sort((a, b) => anglesDeg[a] - anglesDeg[b]);
-  const sortedAnglesDeg = order.map((i) => anglesDeg[i]);
   const frdTexts = [driver.frdText, ...offAxisWithData.map((m) => m.frdText)];
-  const dbByAngle = order.map((i) => Array.from(computeFilteredResponse(driver, frdTexts[i]), (c) => 20 * Math.log10(complexMagnitude(c))));
+  return {
+    anglesDeg: order.map((i) => anglesDeg[i]),
+    responses: order.map((i) => computeFilteredResponse(driver, frdTexts[i])),
+  };
+}
+
+// This driver's own directivity chart data: its angle family (in dB) plus
+// the estimated power response across them. Returns null if there are no
+// off-axis measurements loaded yet (directivity needs at least one angle
+// beyond on-axis to say anything a plain on-axis chart doesn't already show).
+function computeDriverDirectivity(driver) {
+  const angleResponses = computeDriverAngleResponses(driver);
+  if (!angleResponses || angleResponses.anglesDeg.length < 2) return null;
+
+  const dbByAngle = angleResponses.responses.map((response) => Array.from(response, (c) => 20 * Math.log10(complexMagnitude(c))));
+  return {
+    anglesDeg: angleResponses.anglesDeg,
+    dbByAngle,
+    powerDb: powerResponseDb(angleResponses.anglesDeg, dbByAngle),
+  };
+}
+
+// The whole system's (every contributing driver's) off-axis family and
+// estimated power response, combining drivers that may not share the same
+// measured angles: the target angle set is the union of every driver's own
+// angles, and at each one, a driver that wasn't measured there contributes
+// its own nearest measured angle instead (see nearestAngleIndex) - a driver
+// with no off-axis measurements at all contributes its on-axis response at
+// every target angle. Returns null if no driver has any off-axis data (the
+// main on-axis-only chart already covers that case).
+function computeSystemDirectivity(project) {
+  const perDriverAngles = project.drivers.map(computeDriverAngleResponses).filter(Boolean);
+  if (perDriverAngles.length === 0 || !perDriverAngles.some((d) => d.anglesDeg.length > 1)) return null;
+
+  const angleSet = new Set([0]);
+  for (const d of perDriverAngles) for (const angleDeg of d.anglesDeg) angleSet.add(angleDeg);
+  const anglesDeg = Array.from(angleSet).sort((a, b) => a - b);
+
+  const dbByAngle = anglesDeg.map((targetAngleDeg) => {
+    const perDriverResponses = perDriverAngles.map((d) => d.responses[nearestAngleIndex(d.anglesDeg, targetAngleDeg)]);
+    const summed = sumResponses(perDriverResponses);
+    return Array.from(summed, (c) => 20 * Math.log10(complexMagnitude(c)));
+  });
 
   return {
-    anglesDeg: sortedAnglesDeg,
+    anglesDeg,
     dbByAngle,
-    powerDb: powerResponseDb(sortedAnglesDeg, dbByAngle),
+    powerDb: powerResponseDb(anglesDeg, dbByAngle),
   };
 }
 
@@ -210,11 +256,63 @@ function App() {
 
   const nameInput = el('input', { type: 'text', value: project.name, id: 'field-name' });
   const errorBox = el('p.error-text', { style: { display: 'none' } });
-  const statusBox = el('p.hint');
+  const statusBox = el('p.hint', { id: 'main-status' });
 
   const driversContainer = el('div');
   const chartContainer = el('div');
   let chart;
+
+  const systemDirectivityContainer = el('div', { id: 'system-directivity-chart' });
+  const systemDirectivityStatus = el('p.hint', { id: 'system-directivity-status' });
+  let systemDirectivityChart;
+
+  // Rebuilt wholesale on every recompute() (not setData()-updated in place),
+  // same reasoning as the per-driver directivity chart: the angle set this
+  // chart needs can change with any edit anywhere in the project, so there
+  // is no stable series count to update in place, and building the series
+  // config and the data together in one synchronous step avoids the
+  // series/data length mismatch the main chart had to guard against.
+  function refreshSystemDirectivity() {
+    systemDirectivityChart?.destroy();
+    systemDirectivityChart = null;
+    systemDirectivityContainer.textContent = '';
+
+    const directivity = computeSystemDirectivity(project);
+    if (!directivity) {
+      systemDirectivityStatus.textContent =
+        'Add at least one off-axis measurement to any driver above to see the system’s combined off-axis and estimated power response.';
+      return;
+    }
+
+    const theme = chartTheme();
+    const series = [{}];
+    directivity.anglesDeg.forEach((angleDeg, i) => {
+      series.push({ label: `${angleDeg}°`, stroke: theme.series[i % theme.series.length], width: 1.5, dash: angleDeg === 0 ? undefined : [4, 3] });
+    });
+    series.push({ label: 'Estimated power response', stroke: theme.accent, width: 2.5 });
+
+    systemDirectivityChart = new uPlot(
+      {
+        width: systemDirectivityContainer.clientWidth || 600,
+        height: 380,
+        scales: { x: { time: false, distr: 3 /* log */ } },
+        axes: [
+          {
+            label: 'Frequency (Hz)',
+            values: (_u, vals) => vals.map((v) => (v >= 1000 ? `${v / 1000}k` : v)),
+            stroke: theme.inkMuted,
+            grid: { stroke: theme.border, width: 1 },
+            font: `12px ${theme.fontSans}`,
+          },
+          { label: 'SPL (dB)', stroke: theme.inkMuted, grid: { stroke: theme.border, width: 1 }, font: `12px ${theme.fontSans}` },
+        ],
+        series,
+      },
+      [Array.from(COMMON_FREQS), ...directivity.dbByAngle, directivity.powerDb],
+      systemDirectivityContainer
+    );
+    systemDirectivityStatus.textContent = `Combining every driver's off-axis family at ${directivity.anglesDeg.length} angle(s) (0–${Math.max(...directivity.anglesDeg)}°) — a driver measured at a different angle stands in its own nearest one, and a driver with no off-axis measurements is assumed not to change with angle.`;
+  }
 
   function networkEditor(driver, onChange) {
     const container = el('div');
@@ -393,7 +491,10 @@ function App() {
     // step sidesteps the series/data length mismatch the main chart had to
     // guard against.
     function refresh() {
-      saveProject(project);
+      // recompute() saves the project and also refreshes the system-level
+      // off-axis/power response chart, which depends on every driver's
+      // off-axis data, not just this one's.
+      recompute();
       chart?.destroy();
       chart = null;
       chartContainer.textContent = '';
@@ -635,6 +736,15 @@ function App() {
   function recompute() {
     project.name = nameInput.value;
     saveProject(project);
+    refreshSystemDirectivity();
+
+    // Driver cards (and the directivityEditor inside each) are built by
+    // renderDrivers(), which runs before rebuildChart() creates the main
+    // chart - each driver's own construction-time refresh() already calls
+    // this function, before there's a main chart to update. That's fine:
+    // the saving and system-chart refresh above don't need it, and
+    // rebuildChart() + recompute() right after will populate this part.
+    if (!chart) return;
 
     const curves = computeProjectCurves(project);
     if (!curves) {
@@ -695,6 +805,7 @@ function App() {
       el('div.actions', [exportButton, importButton, importInput]),
     ]),
     el('div.chart-panel', [el('h2', 'Driver and summed response'), chartContainer]),
+    el('div.chart-panel', [el('h2', 'System off-axis & power response'), systemDirectivityStatus, systemDirectivityContainer]),
   ]);
 
   renderDrivers();
@@ -724,6 +835,25 @@ function App() {
       }
     });
   }).observe(chartContainer);
+
+  // Same long-lived-observer pattern for the system directivity chart,
+  // which (like the per-driver one) is always rebuilt wholesale rather than
+  // setData()-updated, so there's no series count to keep in sync here -
+  // just guard against resizing (or self-healing) a chart that doesn't
+  // exist yet because no driver has off-axis data loaded.
+  new ResizeObserver(([entry]) => {
+    if (!systemDirectivityChart) return;
+    const width = entry.contentRect.width;
+    if (width === systemDirectivityChart.width) return;
+    requestAnimationFrame(() => {
+      if (!systemDirectivityChart) return;
+      try {
+        systemDirectivityChart.setSize({ width, height: 380 });
+      } catch {
+        refreshSystemDirectivity();
+      }
+    });
+  }).observe(systemDirectivityContainer);
 }
 
 App();

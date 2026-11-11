@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { zoneWeights, powerResponseDb } from '../src/directivity.js';
+import { zoneWeights, powerResponseDb, nearestAngleIndex } from '../src/directivity.js';
 
 test('zoneWeights always sums to 1 (the full front-hemisphere solid angle, 0 to 90 degrees), regardless of how many angles or how they are spaced', () => {
   for (const angles of [[0], [0, 90], [0, 45, 90], [0, 15, 30, 45, 60, 75, 90], [0, 10, 60, 90]]) {
@@ -73,4 +73,24 @@ test('worked example: angles [0, 60] with 0dB on-axis and -6.0206dB (half amplit
 
   const [power] = powerResponseDb([0, 60], [[0], [-6.0206]]);
   assert.ok(Math.abs(power - expectedDb) < 1e-6);
+});
+
+test('nearestAngleIndex picks the closest measured angle', () => {
+  const angles = [0, 15, 30, 60, 90];
+  assert.equal(nearestAngleIndex(angles, 0), 0);
+  assert.equal(nearestAngleIndex(angles, 10), 1); // closer to 15 than 0
+  assert.equal(nearestAngleIndex(angles, 5), 0); // closer to 0 than 15
+  assert.equal(nearestAngleIndex(angles, 45), 2); // closer to 30 than 60
+  assert.equal(nearestAngleIndex(angles, 90), 4);
+  assert.equal(nearestAngleIndex(angles, 200), 4); // out of range clamps to the nearest end
+});
+
+test('nearestAngleIndex breaks an exact tie towards the earlier (more on-axis) angle', () => {
+  assert.equal(nearestAngleIndex([0, 30], 15), 0);
+  assert.equal(nearestAngleIndex([10, 20, 40], 30), 1);
+});
+
+test('nearestAngleIndex with a single angle always returns it', () => {
+  assert.equal(nearestAngleIndex([0], 0), 0);
+  assert.equal(nearestAngleIndex([0], 90), 0);
 });

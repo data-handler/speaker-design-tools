@@ -52,3 +52,29 @@ export function powerResponseDb(anglesDeg, magnitudeDbByAngle) {
     return 10 * Math.log10(energy / weightSum);
   });
 }
+
+/**
+ * The index of whichever of anglesDeg is closest to targetAngleDeg (ties
+ * broken towards the earlier, more on-axis entry). Used to combine several
+ * drivers' off-axis measurements into one system-level directivity estimate
+ * when they weren't measured at the same angles: each driver stands in its
+ * nearest own measured angle for a target angle it doesn't have, rather
+ * than interpolating between measured angles (which, done on a complex
+ * response, risks distorting phase right where it matters most - near a
+ * directivity null).
+ * @param {number[]} anglesDeg
+ * @param {number} targetAngleDeg
+ * @returns {number}
+ */
+export function nearestAngleIndex(anglesDeg, targetAngleDeg) {
+  let bestIndex = 0;
+  let bestDiff = Infinity;
+  for (let i = 0; i < anglesDeg.length; i++) {
+    const diff = Math.abs(anglesDeg[i] - targetAngleDeg);
+    if (diff < bestDiff) {
+      bestDiff = diff;
+      bestIndex = i;
+    }
+  }
+  return bestIndex;
+}
